@@ -391,7 +391,7 @@ class SeatPrediction(BaseModel):
     share_predicted_other: float = _share_field()
 
     predicted_winner: PartyCode
-    predicted_margin: float
+    predicted_margin: float = Field(ge=0.0)
 
     leader: PartyCode
     consolidator: PartyCode | None = None
