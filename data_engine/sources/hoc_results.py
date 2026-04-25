@@ -3,6 +3,27 @@ import pandas as pd
 from schema.common import Nation, PartyCode
 
 
+# Columns that must never be rolled into the "other" vote total.
+_FIXED_EXCLUDES: set[str] = {
+    "electorate", "valid votes", "valid_votes",
+    "total votes", "rejected ballots", "majority",
+    "invalid votes", "declaration time",
+    "county name",
+}
+
+
+def _is_excluded_column(col_name: str) -> bool:
+    """Return True if the column should not be rolled into 'other'."""
+    n = col_name.lower().strip()
+    if n in _FIXED_EXCLUDES:
+        return True
+    if n.startswith("of which "):
+        return True
+    if " winner" in n:
+        return True
+    return False
+
+
 # Aliases the parser will accept for each party column. Lower-cased, trimmed.
 _PARTY_ALIASES: dict[PartyCode, set[str]] = {
     PartyCode.LAB: {"lab", "labour", "lab co-op", "labour co-operative", "lab/co-op"},
@@ -70,11 +91,7 @@ def parse_hoc_results(csv_bytes: bytes) -> pd.DataFrame:
         c for c in raw.columns
         if c not in matched_columns
         and pd.api.types.is_numeric_dtype(raw[c])
-        and c.lower() not in {"electorate", "valid votes", "valid_votes",
-                              "total votes", "rejected ballots", "majority",
-                              "invalid votes", "of which other winner",
-                              "ons region id", "constituency type",
-                              "declaration time", "county name"}
+        and not _is_excluded_column(c)
     ]
 
     rows: list[dict] = []
@@ -103,7 +120,7 @@ def parse_hoc_results(csv_bytes: bytes) -> pd.DataFrame:
         for c in other_cols:
             v = r[c]
             if pd.notna(v):
-                other_votes += int(v)
+                other_votes += int(round(v))
         share = (other_votes / valid * 100.0) if valid > 0 else 0.0
         rows.append({
             "ons_code": ons, "constituency_name": name, "region": region,

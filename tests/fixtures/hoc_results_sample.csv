@@ -1,6 +1,6 @@
-ONS ID,Constituency name,Country name,Region name,First party,Lab,Con,LD,Reform,Green,SNP,PC,Other,Valid votes
-E14001234,Gorton and Denton,England,North West,Lab,18234,2310,1422,8120,3110,0,0,1100,34296
-E14005678,Caerphilly,Wales,Wales,Lab,15234,3120,1100,2010,890,0,9234,540,32128
-S14000041,Hamilton Larkhall and Stonehouse,Scotland,Scotland,SNP,11234,2200,1500,7800,820,12340,0,500,36394
-W07000058,Caerphilly Westminster,Wales,Wales,Lab,16100,2200,900,1700,750,0,8900,400,30950
-N06000010,North Down,Northern Ireland,Northern Ireland,Other,500,200,150,100,80,0,0,21345,22375
+ONS ID,Constituency name,Country name,Region name,First party,Lab,Con,LD,Reform,Green,SNP,PC,Other,Workers Party,of which other winner,Valid votes
+E14001234,Gorton and Denton,England,North West,Lab,18234,2310,1422,8120,3110,0,0,750,350,0,34296
+E14005678,Caerphilly,Wales,Wales,Lab,15234,3120,1100,2010,890,0,9234,400,140,0,32128
+S14000041,Hamilton Larkhall and Stonehouse,Scotland,Scotland,SNP,11234,2200,1500,7800,820,12340,0,400,100,0,36394
+W07000058,Caerphilly Westminster,Wales,Wales,Lab,16100,2200,900,1700,750,0,8900,300,100,0,30950
+N06000010,North Down,Northern Ireland,Northern Ireland,Other,500,200,150,100,80,0,0,21000,345,21000,22375
