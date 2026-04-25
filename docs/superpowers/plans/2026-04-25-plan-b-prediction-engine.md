@@ -607,7 +607,7 @@ byelections_results:
   - { event_id: tst_eng_2025, party: snp,    votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: plaid,  votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: other,  votes:  300, actual_share:  3.0, prior_share:  2.0 }
-  # tst_wal_2025: Plaid consolidates. Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 0.667.
+  # tst_wal_2025: Plaid consolidates. Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 2/3 (~0.6667).
   # Green prior 10 actual 5 → 0.5. Con prior 5 actual 2 → 0.6. Other prior 2 → skipped. Reform/Plaid skipped.
   - { event_id: tst_wal_2025, party: plaid,  votes: 5000, actual_share: 50.0, prior_share: 25.0 }
   - { event_id: tst_wal_2025, party: lab,    votes: 2000, actual_share: 20.0, prior_share: 50.0 }
@@ -749,7 +749,7 @@ def test_fixture_matrix_weights_are_correct(tiny_snapshot_path):
     assert tw.loc[("wales", "plaid", "lab"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
     assert tw.loc[("wales", "plaid", "green"), "weight"] == pytest.approx(0.5,  abs=1e-6)
     assert tw.loc[("wales", "plaid", "con"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
-    assert tw.loc[("wales", "plaid", "ld"),    "weight"] == pytest.approx(2/3,  abs=1e-3)
+    assert tw.loc[("wales", "plaid", "ld"),    "weight"] == pytest.approx(2/3,  abs=1e-6)
 
 
 def test_fixture_provenance_links_back_to_events(tiny_snapshot_path):
