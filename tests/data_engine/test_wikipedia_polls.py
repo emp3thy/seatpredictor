@@ -52,3 +52,21 @@ def test_fetch_uses_user_agent_and_returns_text():
     sent = route.calls[0].request
     assert "User-Agent" in sent.headers
     assert "seatpredictor" in sent.headers["User-Agent"]
+
+
+def test_implausible_share_sum_rows_are_filtered():
+    """A row whose party shares sum to ~600 (seat-projection table) must be dropped."""
+    html = '''
+    <html><body>
+    <table class="wikitable">
+    <tr><th>Pollster</th><th>Date</th><th>Sample size</th>
+        <th>Lab</th><th>Con</th><th>Reform</th><th>LD</th><th>Grn</th><th>SNP</th><th>PC</th><th>Others</th></tr>
+    <tr><td>NormalPoll</td><td>1 Apr 2026</td><td>1000</td>
+        <td>30</td><td>22</td><td>24</td><td>11</td><td>8</td><td>3</td><td>1</td><td>1</td></tr>
+    <tr><td>SeatProjMRP</td><td>1 Apr 2026</td><td>1000</td>
+        <td>250</td><td>120</td><td>200</td><td>40</td><td>20</td><td>10</td><td>5</td><td>5</td></tr>
+    </table>
+    </body></html>
+    '''
+    df = parse_polls_html(html, geography="GB")
+    assert set(df["pollster"]) == {"NormalPoll"}  # SeatProjMRP filtered out

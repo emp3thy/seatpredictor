@@ -85,7 +85,19 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
             poll = _parse_row(td_nodes, col_map, geography=geography)
             if poll is not None:
                 rows.append(poll)
-    return pd.DataFrame(rows)
+
+    if not rows:
+        return pd.DataFrame(rows)
+
+    df = pd.DataFrame(rows)
+    _SHARE_COLS = ["con", "lab", "ld", "reform", "green", "snp", "plaid", "other"]
+    share_sum = df[_SHARE_COLS].sum(axis=1)
+    # Reject rows whose party-share sum is implausibly far from 100% — these are
+    # seat-projection MRP tables (sums ~600 from seat counts), sub-national tables
+    # (sums ~50–75), or tactical-voting scenario tables (sums ~80–92) that passed
+    # the header-shape filter but aren't national VI.
+    df = df[(share_sum >= 95) & (share_sum <= 110)].reset_index(drop=True)
+    return df
 
 
 # --- helpers ---
@@ -109,7 +121,7 @@ def _build_column_map(headers: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for idx, h in enumerate(headers):
         nl = _norm_header(h)
-        if nl == "pollster":
+        if nl in {"pollster", "polling firm", "poll firm"}:
             out["pollster"] = str(idx)
         elif nl in {"sample size", "sample", "samplesize"}:
             out["sample"] = str(idx)
@@ -189,8 +201,11 @@ def _parse_date_from_node(node: Tag) -> tuple[date | None, date | None]:
 
     Strategy:
     1. If node has data-sort-value (ISO YYYY-MM-DD), use that as end date.
-    2. Parse text to find start date (day/month), apply year from end date.
-    3. If no data-sort-value, fall back to full text parsing.
+       Use the parsed year as default_year for text range parsing.
+    2. If data-sort-value is present but malformed, extract a 4-digit year from
+       it if possible, otherwise fall back to the current calendar year.
+       Then call _parse_date_range with that default_year.
+    3. If no data-sort-value, fall back to full text parsing (year in text).
     """
     sort_val = node.get("data-sort-value", "")  # type: ignore[arg-type]
     text = _clean(node)
@@ -198,13 +213,21 @@ def _parse_date_from_node(node: Tag) -> tuple[date | None, date | None]:
     # Remove footnote markers from text
     text = re.sub(r"\[[^\]]*\]", "", text).strip()
 
-    if sort_val and re.match(r"\d{4}-\d{2}-\d{2}", str(sort_val)):
-        end_date = _parse_iso(str(sort_val))
+    if sort_val:
+        sort_val_str = str(sort_val)
+        end_date = _parse_iso(sort_val_str)
         if end_date:
+            # Well-formed ISO date: use year from it as default_year for text
             start_date = _derive_start_date(text, end_date)
             return start_date, end_date
 
-    # Fallback: full text with explicit year
+        # Malformed data-sort-value (empty string, "-", "0000-00-00", etc.)
+        # Try to extract a 4-digit year from the sort value as a hint
+        yr_match = re.search(r"(\d{4})", sort_val_str)
+        default_year = int(yr_match.group(1)) if yr_match else date.today().year
+        return _parse_date_range(text, default_year=default_year)
+
+    # No data-sort-value at all: fall back to full text with explicit year
     return _parse_date_range(text)
 
 
@@ -255,7 +278,7 @@ def _derive_start_date(text: str, end_date: date) -> date:
         m2 = _MONTH.get(_mon2.lower(), _MONTH.get(_mon2.lower()[:3]))
         if m1 and m2:
             yr = end_date.year
-            if m1 > (m2 or end_date.month):
+            if m1 > m2:
                 yr -= 1  # start is in previous year (Dec-Jan boundary)
             try:
                 return date(yr, m1, int(d1))
@@ -265,13 +288,57 @@ def _derive_start_date(text: str, end_date: date) -> date:
     return end_date  # fallback: use end date as start
 
 
-def _parse_date_range(text: str) -> tuple[date | None, date | None]:
-    """Handles dates with explicit year in text.
+def _parse_date_range(
+    text: str, default_year: int | None = None
+) -> tuple[date | None, date | None]:
+    """Handles dates with explicit year in text, or no-year formats with a default_year.
 
-    Formats: '18-20 Apr 2026', '29 Mar - 1 Apr 2026', '18 Apr 2026',
+    Formats with explicit year: '18-20 Apr 2026', '29 Mar - 1 Apr 2026', '18 Apr 2026',
     '18 Apr 2026 - 1 May 2026', '29 Mar 2025 - 1 Apr 2026'.
+
+    No-year formats (require default_year): '22-23 Apr', '29 Mar - 1 Apr', '22 Apr'.
     """
     text = text.strip()
+
+    # --- No-year formats (used when data-sort-value is malformed) ---
+    if default_year is not None:
+        # Single day no-year: "22 Apr"
+        m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)$", text)
+        if m:
+            d, mon = m.groups()
+            month = _MONTH.get(mon.lower(), _MONTH.get(mon.lower()[:3]))
+            if month:
+                try:
+                    dd = date(default_year, month, int(d))
+                    return dd, dd
+                except ValueError:
+                    pass
+
+        # Same-month range no-year: "22-23 Apr"
+        m = re.match(r"^(\d{1,2})\s*-\s*(\d{1,2})\s+([A-Za-z]+)$", text)
+        if m:
+            d1, d2, mon = m.groups()
+            month = _MONTH.get(mon.lower(), _MONTH.get(mon.lower()[:3]))
+            if month:
+                try:
+                    return date(default_year, month, int(d1)), date(default_year, month, int(d2))
+                except ValueError:
+                    pass
+
+        # Cross-month range no-year: "29 Mar - 1 Apr"
+        m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})\s+([A-Za-z]+)$", text)
+        if m:
+            d1, mon1, d2, mon2 = m.groups()
+            m1 = _MONTH.get(mon1.lower(), _MONTH.get(mon1.lower()[:3]))
+            m2 = _MONTH.get(mon2.lower(), _MONTH.get(mon2.lower()[:3]))
+            if m1 and m2:
+                yr1 = default_year - 1 if m1 > m2 else default_year
+                try:
+                    return date(yr1, m1, int(d1)), date(default_year, m2, int(d2))
+                except ValueError:
+                    pass
+
+    # --- Explicit-year formats ---
     # Single day: "18 Apr 2026"
     m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", text)
     if m:
@@ -311,11 +378,15 @@ def _parse_date_range(text: str) -> tuple[date | None, date | None]:
 
 
 def _parse_int(s: str) -> int:
-    s = re.sub(r"[^\d]", "", s)
-    try:
-        return int(s) if s else 0
-    except ValueError:
-        return 0
+    # Match the first run of digits (with commas as thousands separators), ignoring
+    # trailing text like " (online)".  e.g. "1,500 (online)" → 1500, not 15000.
+    m = re.match(r"^\D*(\d[\d,]*)", s)
+    if m:
+        try:
+            return int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return 0
 
 
 def _parse_pct(s: str) -> float:
