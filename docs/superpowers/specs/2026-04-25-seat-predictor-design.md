@@ -25,8 +25,10 @@ Conventional uniform-swing models break in a fragmented multi-party landscape wh
 
 - Electoral Calculus (https://www.electoralcalculus.co.uk/prediction_main.html) — uniform-swing baseline.
 - Politico Poll of Polls (https://www.politico.eu/europe-poll-of-polls/united-kingdom/) — polling aggregation reference.
-- Caerphilly Senedd by-election (Oct 2025) — Plaid won after Reform led; Labour's vote collapsed and consolidated behind Plaid.
-- Gorton & Denton Westminster by-election (May 2025) — Labour held against Reform; left-bloc voters (Green, LD) consolidated behind Labour.
+- Caerphilly Senedd by-election (23 Oct 2025) — Plaid won 47.4%; Reform 36.0%; Labour collapsed from 46.0% (2021 prior) to 11.0%. The left-bloc consolidated behind Plaid as the locally-credible challenger.
+- Gorton & Denton Westminster by-election (26 Feb 2026) — Green won 40.7%; Reform 28.7%; Labour third at 25.4%, down from ~50%+ in 2024. Despite Labour being the prior incumbent, the left-bloc consolidated behind Green — the consolidator is identified by current projected strength, not historical incumbency.
+- Runcorn & Helsby Westminster by-election (1 May 2025) — Reform won by 6 votes over Labour; Lab was the would-be consolidator but the consolidation effort fell just short.
+- Hamilton, Larkhall & Stonehouse Holyrood by-election (5 Jun 2025) — Scottish Labour 31.6% over SNP 29.4% with Reform third at 26.1%.
 
 ---
 
@@ -62,7 +64,7 @@ Conventional uniform-swing models break in a fragmented multi-party landscape wh
 Three rules:
 
 1. **Fetch is idempotent per `(source, fetch_date)`.** First call writes raw HTML/CSV/JSON to `raw_cache/`; subsequent calls hit the cache and skip. `--refresh` forces re-fetch.
-2. **Transform is idempotent per `(raw_cache_state, as_of_date, schema_version)`.** The snapshot directory is named by a content hash over those three things. Same hash → no-op. Schema bump → new snapshot directory; old one untouched, old predictions remain reproducible.
+2. **Transform is idempotent per `(raw_cache_state, as_of_date, schema_version)`.** The snapshot file is named by a content hash over those three input keys. Same hash → no-op (the existing snapshot is reused). Schema bump → new snapshot file; old one untouched, old predictions remain reproducible. Note: the hash is computed over *inputs* (raw cache state etc.), not over the snapshot file's bytes — SQLite files are not byte-deterministic across regenerations, but we never regenerate when input hashes match, so this doesn't matter.
 3. **Re-runs are time-travel by `--as-of`.** Polls are stored in raw cache with their `published_date`. "Snapshot as-of June 1" filters the cache to polls published on or before June 1. The HoC results CSV is static. The by-elections YAML is git-history-versioned.
 
 ### Initial backfill caveat
@@ -130,8 +132,9 @@ Single venv, single git history. Both engines depend on `schema/`. The "two proj
 ### Tech stack
 
 - Python (single venv, managed by `uv`).
-- Pandas + PyArrow (parquet I/O).
-- Pydantic v2 (typed models, runtime validation).
+- SQLite (single-file storage for snapshots and predictions; stdlib `sqlite3` plus SQLAlchemy core for query construction).
+- Pandas (`pd.read_sql_table` / `pd.to_sql` for DataFrame round-trips).
+- Pydantic v2 (typed models, runtime validation at I/O boundaries).
 - BeautifulSoup + httpx (scraping with caching).
 - Pytest (testing).
 - Click or Typer (CLI).
@@ -175,7 +178,7 @@ Aggregate per region:
 - For each `(region, consolidator, source)` cell, average the observed `flow_rate` across all events in that region where the cell was observable.
 - No observations for a cell → cell is `null`. **Strict: no cross-bloc / cross-region inference in v1.**
 
-Emitted as `transfer_weights.json` inside each snapshot. Outer keys are nations (`england` / `wales` / `scotland`); within each nation, one sub-dict per *possible* consolidator party (any left-bloc party that could be the locally strongest in that nation); innermost dict maps source-party → weight.
+Stored as the `transfer_weights` and `transfer_weights_provenance` tables inside the snapshot SQLite file. The logical structure (nation → consolidator → source → weight) is shown below as JSON for clarity, but it lives as relational rows. Outer keys are nations (`england` / `wales` / `scotland`); within each nation, one sub-dict per *possible* consolidator party (any left-bloc party that could be the locally strongest in that nation); innermost dict maps source-party → weight.
 
 ```json
 {
@@ -201,9 +204,12 @@ Emitted as `transfer_weights.json` inside each snapshot. Outer keys are nations 
   },
   "base": null,
   "provenance": {
-    "england":  { "lab":   { "events": ["gorton_denton_2025", "runcorn_2025"], "n": 2 } },
-    "wales":    { "plaid": { "events": ["caerphilly_senedd_2025"],             "n": 1 } },
-    "scotland": { "snp":   { "events": ["hamilton_2025"],                      "n": 1 } }
+    "england":  {
+      "lab":   { "events": ["runcorn_helsby_2025"],   "n": 1 },
+      "green": { "events": ["gorton_denton_2026"],    "n": 1 }
+    },
+    "wales":    { "plaid": { "events": ["caerphilly_senedd_2025"], "n": 1 } },
+    "scotland": { "lab":   { "events": ["hamilton_larkhall_stonehouse_2025"], "n": 1 } }
   }
 }
 ```
@@ -224,14 +230,25 @@ data/raw_cache/
 
 ### 4.6 Snapshot layout
 
+A snapshot is a **single SQLite file** named by its content hash:
+
 ```
-data/snapshots/2026-04-25__v1__a3f2/
-  manifest.json          # as_of_date, schema_version, source_versions, content_hash, generated_at
-  polls.parquet
-  results_2024.parquet
-  byelections.parquet
-  transfer_weights.json
+data/snapshots/2026-04-25__v1__a3f2.sqlite
 ```
+
+Tables inside the file:
+
+| table | rows | purpose |
+|---|---|---|
+| `manifest` | 1 row | `as_of_date`, `schema_version`, `source_versions` (JSON), `content_hash`, `generated_at` |
+| `polls` | one per poll | parsed from Wikipedia, filtered by `published_date <= as_of_date` |
+| `results_2024` | constituency × party | from HoC Library CSV |
+| `byelections_events` | one per event | event-level metadata: name, date, type, region/nation, `threat_party`, `exclude_from_matrix`, `narrative_url` |
+| `byelections_results` | one per (event, candidate) | per-candidate prior and actual shares |
+| `transfer_weights` | one per (region, consolidator, source) | derived matrix entries with `weight` and `n` (count of contributing events) |
+| `transfer_weights_provenance` | one per (region, consolidator, event) | provenance trace from cell back to contributing events |
+
+**Why single-file SQLite:** keeps the snapshot a single artifact rather than a directory, makes ad-hoc inspection trivial (`sqlite3 snapshot.sqlite ".tables"`, DB Browser for SQLite GUI, `pd.read_sql_table` from Python), gives ACID semantics for free (no risk of partial-snapshot states), and supports natural joins for drill-down queries. The byte-determinism trade-off is irrelevant because idempotency rule 2 hashes inputs, not outputs.
 
 ### 4.7 CLI surface
 
@@ -260,7 +277,7 @@ class Strategy(ABC):
     ) -> PredictionResult: ...
 ```
 
-- `Snapshot` — typed wrapper that loads `polls.parquet`, `results_2024.parquet`, `byelections.parquet`, `transfer_weights.json` lazily.
+- `Snapshot` — typed wrapper that opens the SQLite file and exposes each table as a lazily-loaded DataFrame (`snapshot.polls`, `snapshot.results_2024`, `snapshot.byelections_events`, `snapshot.byelections_results`, `snapshot.transfer_weights`).
 - `ScenarioConfig` — strategy-specific knobs, validated by Pydantic.
 - `PredictionResult` — `per_seat: DataFrame`, `national_totals: dict`, `run_metadata: dict` (full config + snapshot manifest copied in for self-description).
 
@@ -344,7 +361,7 @@ class ReformThreatConfig(ScenarioConfig):
 
 ### 5.4 Determinism
 
-Mandatory. No RNG anywhere without a seed. Same `(snapshot, strategy, config)` produces byte-identical output.
+Mandatory. No RNG anywhere without a seed. Same `(snapshot, strategy, config)` produces logically-identical output (row-set equality across all prediction tables). The output SQLite file isn't byte-identical due to SQLite internals, but its contents are.
 
 ### 5.5 CLI surface
 
@@ -359,12 +376,20 @@ seatpredict-predict diff <run_id_1> <run_id_2>
 
 ### 5.6 Prediction output layout
 
+A prediction run produces a **single SQLite file**:
+
 ```
-data/predictions/<snapshot_id>__<strategy>__<config_hash>__<label>/
-  seats.parquet
-  national.json
-  config.json            # full snapshot+config copy for full reproducibility
+data/predictions/<snapshot_id>__<strategy>__<config_hash>__<label>.sqlite
 ```
+
+Tables:
+
+| table | purpose |
+|---|---|
+| `seats` | per-seat predictions (full schema from §5.2) |
+| `national` | per-party seat counts plus per-region/nation breakdowns |
+| `config` | 1 row: snapshot id, strategy, full scenario config (JSON), schema_version, run_id, generated_at — full copy for reproducibility |
+| `notes_index` | denormalised (ons_code, flag) view for fast filtering by flag |
 
 ---
 
@@ -405,15 +430,16 @@ Notebooks are short (30–50 cells), every cell does one observable thing, every
 
 ### 7.1 Schema/contract tests (`tests/schema/`)
 
-The most important layer. Every Pydantic model has a round-trip test: construct → serialise to parquet/JSON → load → field-equal assertion. Snapshot manifest validation verifies `schema_version` increments and `content_hash` is reproducible.
+The most important layer. Every Pydantic model has a round-trip test: construct → write to SQLite (`pd.to_sql`) → read back (`pd.read_sql_table`) → field-equal assertion. Snapshot manifest validation verifies `schema_version` increments and `content_hash` is reproducible from inputs (input-hash equality, not file-byte equality).
 
 ### 7.2 Data engine tests (`tests/data_engine/`)
 
-- **Wikipedia parser** — golden-file tests against committed sample HTML in `tests/fixtures/`. Re-running the parser must produce byte-identical parquet for the fixture.
+- **Wikipedia parser** — golden-file tests against committed sample HTML in `tests/fixtures/`. Re-running the parser must produce row-identical results (compared via canonical sort + DataFrame equality) for the fixture.
 - **HoC results loader** — golden-file test against a 5-constituency sample. Verifies column types, share calculations, winner derivation.
 - **By-elections loader** — `by_elections.yaml` validates against the Pydantic model on every CI run.
-- **Idempotency** — running snapshot twice with no source changes produces the same content hash. Forced refresh against unchanged source produces the same content hash.
+- **Idempotency** — running snapshot twice with no source changes produces the same content hash (input-hash equality). The two SQLite files are not byte-identical but their logical content is — verified by row-set comparison per table.
 - **Transfer matrix derivation** — fake by-elections with hand-computed expected aggregates; assert the derived matrix matches.
+- **SQLite write/read round-trip** — every snapshot table written can be read back via `pd.read_sql_table` with type-equal columns.
 
 ### 7.3 Prediction engine tests (`tests/prediction_engine/`)
 

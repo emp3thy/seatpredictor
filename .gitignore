@@ -1,0 +1,7 @@
+.superpowers/
+data/raw_cache/
+data/snapshots/
+data/predictions/
+__pycache__/
+*.pyc
+.venv/
