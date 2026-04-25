@@ -5,6 +5,8 @@ import pytest
 from click.testing import CliRunner
 from data_engine.cli import main
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]  # tests/data_engine/test_cli.py -> repo root
+
 
 @pytest.fixture
 def primed_repo(tmp_path: Path, fixtures_dir: Path) -> Path:
@@ -27,7 +29,7 @@ def primed_repo(tmp_path: Path, fixtures_dir: Path) -> Path:
     (src_dir / "meta.json").write_text("{}")
     hand = root / "data" / "hand_curated"
     hand.mkdir(parents=True)
-    shutil.copy(Path("data/hand_curated/by_elections.yaml"), hand / "by_elections.yaml")
+    shutil.copy(_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml", hand / "by_elections.yaml")
     return root
 
 

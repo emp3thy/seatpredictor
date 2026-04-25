@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import click
@@ -13,6 +13,7 @@ USER_AGENT = "seatpredictor/0.0.1 (research)"
 
 
 def _project_root() -> Path:
+    """Project root anchor. The CLI is designed to be invoked from the repo root."""
     return Path.cwd()
 
 
@@ -76,7 +77,6 @@ def snapshot(as_of):
 @click.option("--every-days", type=int, default=7)
 def backfill(since, every_days: int):
     """One-time: produce snapshots back to --since, every --every-days."""
-    from datetime import timedelta
     start = since.date()
     today = date.today()
     cur = start
