@@ -30,10 +30,10 @@ class ReformThreatConfig(ScenarioConfig):
     polls_window_days: int = Field(default=14, gt=0)
 
 
-_PARTIES = ["con", "lab", "ld", "reform", "green", "snp", "plaid", "other"]
-
-
-def _share_field() -> "Field":
+def _share_field():
+    """Pydantic Field factory for percentage shares (0–100). Return type omitted because
+    pydantic.Field is an overloaded function, and annotating it as a class confuses
+    pyright."""
     return Field(ge=0.0, le=100.0)
 
 
