@@ -90,3 +90,31 @@ def test_project_raw_shares_preserves_identity_columns():
     out = project_raw_shares(results, swings)
     assert set(out.columns) >= {"ons_code", "constituency_name", "region", "nation"}
     assert len(out) == 2  # one row per seat (pivoted)
+
+
+def test_project_raw_shares_raises_if_no_gb_swing():
+    """Spec §8: invalid inputs fail loudly. The 'GB' fallback is mandatory."""
+    results = _two_seat_results()
+    with pytest.raises(ValueError, match="'GB' fallback"):
+        project_raw_shares(results, {"Wales": {p: 0.0 for p in PartyCode}})
+
+
+def test_project_raw_shares_applies_gb_swing_to_northern_ireland():
+    """Spec §5.3: NI seats get GB swing (no NI-specific branch in v1).
+    The reform-threat strategy short-circuits NI separately; this test only
+    verifies projection's fall-through, not strategy behavior.
+    """
+    ni_row = pd.DataFrame([
+        {"ons_code": "F1", "constituency_name": "F1", "region": "NI", "nation": "northern_ireland",
+         "party": p, "votes": 0, "share": s}
+        for p, s in [("con", 0), ("lab", 0), ("ld", 0), ("reform", 0),
+                     ("green", 10), ("snp", 0), ("plaid", 0), ("other", 90)]
+    ])
+    swings = {"GB": {p: 0.0 for p in PartyCode}}
+    swings["GB"][PartyCode.OTHER] = -10.0  # GB swing should apply to NI
+    out = project_raw_shares(ni_row, swings)
+    f1 = out[out["ons_code"] == "F1"].iloc[0]
+    # Other 90 - 10 = 80; total before renorm = 100 - 10 = 90; renormalise.
+    assert f1["share_raw_other"] == pytest.approx(80.0 * 100.0 / 90.0, abs=1e-6)
+    cols = [f"share_raw_{p.value}" for p in PartyCode]
+    assert f1[cols].sum() == pytest.approx(100.0, abs=1e-6)
