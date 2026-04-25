@@ -1,0 +1,75 @@
+# UK by-elections since the July 2024 GE.
+# threat_party: party the tactical consolidation was *against* (typically the polling-frontrunner heading in,
+# even if they didn't win on the day). Set null for events with no clear threat dynamic.
+# exclude_from_matrix: set true for atypical events (e.g. scandal-driven contests) where flows aren't generalisable.
+
+events:
+  - event_id: runcorn_helsby_2025
+    name: Runcorn and Helsby by-election
+    date: 2025-05-01
+    event_type: westminster_byelection
+    nation: england
+    region: North West
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2025_Runcorn_and_Helsby_by-election
+    candidates:
+      - { party: reform, votes: 12645, actual_share: 38.72, prior_share: 18.10 }
+      - { party: lab,    votes: 12639, actual_share: 38.70, prior_share: 52.90 }
+      - { party: con,    votes: 2341,  actual_share:  7.16, prior_share: 16.00 }
+      - { party: ld,     votes: 1450,  actual_share:  4.44, prior_share:  4.00 }
+      - { party: green,  votes:  870,  actual_share:  2.66, prior_share:  4.00 }
+      - { party: other,  votes: 2705,  actual_share:  8.32, prior_share:  5.00 }
+
+  - event_id: hamilton_larkhall_stonehouse_2025
+    name: Hamilton, Larkhall and Stonehouse Holyrood by-election
+    date: 2025-06-05
+    event_type: holyrood
+    nation: scotland
+    region: Central Scotland
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2025_Hamilton,_Larkhall_and_Stonehouse_by-election
+    candidates:
+      - { party: lab,    votes: 8559, actual_share: 31.6, prior_share: 33.0 }
+      - { party: snp,    votes: 7957, actual_share: 29.4, prior_share: 46.0 }
+      - { party: reform, votes: 7088, actual_share: 26.1, prior_share:  0.0 }
+      - { party: con,    votes: 1621, actual_share:  6.0, prior_share: 17.0 }
+      - { party: ld,     votes:  598, actual_share:  2.2, prior_share:  2.5 }
+      - { party: green,  votes:  609, actual_share:  2.3, prior_share:  1.5 }
+      - { party: other,  votes:  650, actual_share:  2.4, prior_share:  0.0 }
+
+  - event_id: caerphilly_senedd_2025
+    name: Caerphilly Senedd by-election
+    date: 2025-10-23
+    event_type: senedd
+    nation: wales
+    region: South Wales East
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2025_Caerphilly_by-election
+    candidates:
+      - { party: plaid,  votes: 15961, actual_share: 47.4, prior_share: 28.4 }
+      - { party: reform, votes: 12113, actual_share: 36.0, prior_share:  1.7 }
+      - { party: lab,    votes:  3713, actual_share: 11.0, prior_share: 46.0 }
+      - { party: con,    votes:   850, actual_share:  2.5, prior_share: 17.3 }
+      - { party: ld,     votes:   400, actual_share:  1.2, prior_share:  2.4 }
+      - { party: green,  votes:   330, actual_share:  1.0, prior_share:  1.3 }
+      - { party: other,  votes:   295, actual_share:  0.9, prior_share:  2.9 }
+
+  - event_id: gorton_denton_2026
+    name: Gorton and Denton by-election
+    date: 2026-02-26
+    event_type: westminster_byelection
+    nation: england
+    region: North West
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2026_Gorton_and_Denton_by-election
+    candidates:
+      - { party: green,  votes: 13205, actual_share: 40.7, prior_share: 13.2 }
+      - { party: reform, votes:  9314, actual_share: 28.7, prior_share:  9.8 }
+      - { party: lab,    votes:  8245, actual_share: 25.4, prior_share: 50.8 }
+      - { party: con,    votes:   650, actual_share:  2.0, prior_share: 12.4 }
+      - { party: ld,     votes:   430, actual_share:  1.3, prior_share:  3.3 }
+      - { party: other,  votes:   605, actual_share:  1.9, prior_share: 10.5 }
