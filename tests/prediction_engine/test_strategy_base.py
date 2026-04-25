@@ -7,8 +7,19 @@ class _NoopConfig(ScenarioConfig):
     pass
 
 
+@pytest.fixture(autouse=True)
+def _restore_registry():
+    """Guarantee the registry is clean of test-only keys after every test in this
+    module, even if a test fails mid-body. Without this, a leaked key would cause
+    spurious failures on a same-process re-run (pytest --count=2, watch mode)."""
+    keys_before = set(STRATEGY_REGISTRY.keys())
+    yield
+    extras = set(STRATEGY_REGISTRY.keys()) - keys_before
+    for k in extras:
+        del STRATEGY_REGISTRY[k]
+
+
 def test_registry_decorator_registers_class():
-    # Use a one-off name to avoid collisions with real strategies.
     @register("test_noop_xyz")
     class NoopStrategy(Strategy):
         name = "test_noop_xyz"
@@ -18,8 +29,6 @@ def test_registry_decorator_registers_class():
 
     assert "test_noop_xyz" in STRATEGY_REGISTRY
     assert STRATEGY_REGISTRY["test_noop_xyz"] is NoopStrategy
-    # Cleanup so reruns don't fail.
-    del STRATEGY_REGISTRY["test_noop_xyz"]
 
 
 def test_register_rejects_duplicate_name():
@@ -35,5 +44,3 @@ def test_register_rejects_duplicate_name():
             name = "test_dup"
             config_schema = _NoopConfig
             def predict(self, snapshot, scenario): pass
-
-    del STRATEGY_REGISTRY["test_dup"]
