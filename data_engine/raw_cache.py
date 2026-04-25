@@ -29,14 +29,20 @@ class RawCache:
         return (self._dir(key) / "content.bin").exists()
 
     def put(self, key: CacheKey, data: bytes, meta: dict) -> None:
+        """Store content + metadata atomically. fetched_at is stamped by the cache
+        and overrides any caller-supplied value."""
         d = self._dir(key)
         d.mkdir(parents=True, exist_ok=True)
-        (d / "content.bin").write_bytes(data)
         meta_with_ts = {**meta, "fetched_at": datetime.now(tz=timezone.utc).isoformat()}
-        (d / "meta.json").write_text(json.dumps(meta_with_ts, sort_keys=True, indent=2))
+        # Write meta first so exists() (which checks content.bin) only flips True
+        # once both files are present — avoids partial-write windows.
+        (d / "meta.json").write_text(
+            json.dumps(meta_with_ts, sort_keys=True, indent=2), encoding="utf-8"
+        )
+        (d / "content.bin").write_bytes(data)
 
     def get_bytes(self, key: CacheKey) -> bytes:
         return (self._dir(key) / "content.bin").read_bytes()
 
     def get_meta(self, key: CacheKey) -> dict:
-        return json.loads((self._dir(key) / "meta.json").read_text())
+        return json.loads((self._dir(key) / "meta.json").read_text(encoding="utf-8"))
