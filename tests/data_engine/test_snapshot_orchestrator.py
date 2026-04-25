@@ -110,3 +110,50 @@ def test_as_of_filter_changes_input_hash(tmp_path: Path, primed_cache: RawCache)
         byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
     ))
     assert p_apr != p_dec
+
+
+def test_partial_failure_does_not_leave_corrupt_snapshot(
+    tmp_path: Path, primed_cache: RawCache, monkeypatch
+):
+    """If write_dataframe raises mid-way, no .sqlite file should be left at the
+    final path — only the .tmp is cleaned up. The next run can produce a clean
+    snapshot."""
+    out = tmp_path / "snapshots"
+    cfg = BuildSnapshotConfig(
+        as_of_date=date(2026, 4, 25),
+        raw_cache=primed_cache,
+        out_dir=out,
+        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+    )
+    # Inject a failure in the third write_dataframe call
+    from data_engine import snapshot as snapshot_mod
+    original = snapshot_mod.write_dataframe
+    call_count = {"n": 0}
+    def boom(conn, table, df):
+        call_count["n"] += 1
+        if call_count["n"] == 3:
+            raise RuntimeError("simulated mid-write failure")
+        return original(conn, table, df)
+    monkeypatch.setattr(snapshot_mod, "write_dataframe", boom)
+
+    with pytest.raises(RuntimeError, match="simulated mid-write"):
+        build_snapshot(cfg)
+
+    # No .sqlite at final path; no .tmp leftover
+    snapshots = list(out.glob("*.sqlite"))
+    tmps = list(out.glob("*.tmp"))
+    assert snapshots == [], f"Final-path snapshot should not exist: {snapshots}"
+    assert tmps == [], f"Tmp file should be cleaned up: {tmps}"
+
+
+def test_polls_geographies_v1_guard(tmp_path: Path, primed_cache: RawCache):
+    """v1 only supports ('GB',); other tuples must raise NotImplementedError."""
+    cfg = BuildSnapshotConfig(
+        as_of_date=date(2026, 4, 25),
+        raw_cache=primed_cache,
+        out_dir=tmp_path / "snapshots",
+        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        polls_geographies=("GB", "Wales"),
+    )
+    with pytest.raises(NotImplementedError, match="v1 supports"):
+        build_snapshot(cfg)

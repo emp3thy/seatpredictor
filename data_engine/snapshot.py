@@ -1,3 +1,5 @@
+import hashlib
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -43,6 +45,11 @@ def build_snapshot(cfg: BuildSnapshotConfig) -> Path:
     If a snapshot with the same input hash already exists, returns that path
     without re-running the transform.
     """
+    if cfg.polls_geographies != ("GB",):
+        raise NotImplementedError(
+            "v1 supports polls_geographies=('GB',) only; regional pages are "
+            "deferred to Plan B (regional fetch + per-geo cache key)"
+        )
     # Source versions feed into the input hash
     source_versions = _source_versions(cfg)
     input_hash = compute_input_hash(
@@ -64,21 +71,34 @@ def build_snapshot(cfg: BuildSnapshotConfig) -> Path:
     cells_df, provenance_df = derive_transfer_matrix(events_df, ev_results_df)
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
-    with open_snapshot_db(out_path) as conn:
-        write_dataframe(conn, "polls", polls_df)
-        write_dataframe(conn, "results_2024", results_df)
-        write_dataframe(conn, "byelections_events", events_df)
-        write_dataframe(conn, "byelections_results", ev_results_df)
-        write_dataframe(conn, "transfer_weights", cells_df)
-        write_dataframe(conn, "transfer_weights_provenance", provenance_df)
-        manifest = SnapshotManifest(
-            as_of_date=cfg.as_of_date,
-            schema_version=SCHEMA_VERSION,
-            content_hash=input_hash,
-            generated_at=datetime.now(tz=timezone.utc),
-            source_versions=source_versions,
-        )
-        write_manifest(conn, manifest)
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    # Best-effort cleanup if a stale tmp from a prior crashed run exists
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    try:
+        with open_snapshot_db(tmp_path) as conn:
+            write_dataframe(conn, "polls", polls_df)
+            write_dataframe(conn, "results_2024", results_df)
+            write_dataframe(conn, "byelections_events", events_df)
+            write_dataframe(conn, "byelections_results", ev_results_df)
+            write_dataframe(conn, "transfer_weights", cells_df)
+            write_dataframe(conn, "transfer_weights_provenance", provenance_df)
+            manifest = SnapshotManifest(
+                as_of_date=cfg.as_of_date,
+                schema_version=SCHEMA_VERSION,
+                content_hash=input_hash,
+                generated_at=datetime.now(tz=timezone.utc),
+                source_versions=source_versions,
+            )
+            write_manifest(conn, manifest)
+        # Atomic rename — final path either doesn't exist or is complete
+        os.replace(tmp_path, out_path)
+    except BaseException:
+        # Clean up tmp on any failure (including KeyboardInterrupt)
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     return out_path
 
 
@@ -95,6 +115,7 @@ def _build_polls_df(cfg: BuildSnapshotConfig) -> pd.DataFrame:
         parts.append(df)
     polls = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
     if not polls.empty:
+        # ISO YYYY-MM-DD strings sort lexically the same as chronologically
         polls = polls[polls["published_date"] <= cfg.as_of_date.isoformat()]
     return polls
 
@@ -110,8 +131,10 @@ def _build_results_df(cfg: BuildSnapshotConfig) -> pd.DataFrame:
 
 
 def _source_versions(cfg: BuildSnapshotConfig) -> dict[str, str]:
+    # NOTE: this hash captures inputs but NOT parser code. If parser semantics
+    # change in a way that affects output, bump SCHEMA_VERSION to invalidate
+    # all old snapshot caches.
     yaml_bytes = cfg.byelections_yaml.read_bytes()
-    import hashlib
     yaml_hash = hashlib.sha256(yaml_bytes).hexdigest()[:12]
     return {
         "wikipedia_polls": cfg.as_of_date.isoformat(),
