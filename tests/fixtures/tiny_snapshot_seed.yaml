@@ -1,0 +1,116 @@
+# Tiny snapshot seed for prediction-engine tests.
+# 6 seats × 2 polls × 2 by-election events. Polls ≈ aggregate GE-2024 shares so swings ≈ 0;
+# share_raw ≈ share_2024 in every seat.
+
+polls:
+  - { pollster: TestCo, fieldwork_start: 2026-04-15, fieldwork_end: 2026-04-17,
+      published_date: 2026-04-18, sample_size: 1000, geography: GB,
+      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
+  - { pollster: TestCo, fieldwork_start: 2026-04-20, fieldwork_end: 2026-04-22,
+      published_date: 2026-04-23, sample_size: 1100, geography: GB,
+      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
+
+results_2024:
+  # Seat A — England, Reform leader, Lab consolidator, HIGH clarity (Lab-LD gap = 20pp).
+  # Reform 35 > Lab 30 (so Lab is consolidator, not leader). Lab-LD gap = 30-10 = 20pp → clarity = 1.0
+  # at default clarity_threshold=5. Matrix has (england, lab, {ld, green, con}) → flow applies.
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: con,    votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: lab,    votes: 15000, share: 30.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: ld,     votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: green,  votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: other,  votes:  2500, share:  5.0 }
+
+  # Seat B — England, Reform leader, Lab consolidator, LOW clarity (Lab-LD gap = 2pp).
+  # Reform 25 > Lab 24 > LD 22 > Green 14. Lab is consolidator. Lab-LD gap = 2pp → clarity = 0.4 at
+  # default threshold=5 (low_clarity flag fires; flow still applies, scaled by 0.4).
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: con,    votes:  6000, share: 12.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: lab,    votes: 12000, share: 24.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: ld,     votes: 11000, share: 22.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: reform, votes: 12500, share: 25.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: green,  votes:  7000, share: 14.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: other,  votes:  1500, share:  3.0 }
+
+  # Seat C — England, non-Reform leader (Con leads 45, Reform 13). Strategy returns
+  # uniform-swing fallback with non_reform_leader flag.
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: con,    votes: 22500, share: 45.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: lab,    votes: 13000, share: 26.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: ld,     votes:  5000, share: 10.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: reform, votes:  6500, share: 13.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: green,  votes:  2000, share:  4.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: other,  votes:  1000, share:  2.0 }
+
+  # Seat D — Wales, Reform leader, Plaid consolidator (Plaid 30 > Lab 20 in left-bloc).
+  # Reform 35 > Plaid 30 (so Plaid is consolidator, not leader). Plaid-Lab gap = 10pp → clarity = 1.0
+  # at default threshold. Matrix has (wales, plaid, {lab, green, con, ld}) → flow applies.
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: con,    votes:  4000, share:  8.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: lab,    votes: 10000, share: 20.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: ld,     votes:  1000, share:  2.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: green,  votes:  1000, share:  2.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: plaid,  votes: 15000, share: 30.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: other,  votes:  1500, share:  3.0 }
+
+  # Seat E — Scotland, Reform leader, SNP consolidator (SNP 27 > Lab 19 in left-bloc).
+  # The matrix has NO scotland entries (no by-election in Scotland in this seed) →
+  # snapshot.consolidator_observed("scotland", "snp") is False → matrix_unavailable.
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: con,    votes:  4000, share:  8.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: lab,    votes:  9500, share: 19.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: ld,     votes:  1500, share:  3.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: green,  votes:  2500, share:  5.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: snp,    votes: 13500, share: 27.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: other,  votes:  1500, share:  3.0 }
+
+  # Seat F — Northern Ireland (NI exclusion path). Other dominant; Green a token left-bloc share.
+  # All pre-step-2 logic skipped; ni_excluded flag set.
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: con,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: lab,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: ld,     votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: reform, votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: green,  votes:  5000, share: 10.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: other,  votes: 45000, share: 90.0 }
+
+byelections_events:
+  - { event_id: tst_eng_2025, name: Aldermouth-North,  date: 2025-09-01, event_type: westminster_byelection,
+      nation: england, region: North West, threat_party: reform, exclude_from_matrix: false,
+      narrative_url: https://example.test/eng-2025 }
+  - { event_id: tst_wal_2025, name: Caerphilly-Test,    date: 2025-10-23, event_type: senedd,
+      nation: wales,   region: South Wales East, threat_party: reform, exclude_from_matrix: false,
+      narrative_url: https://example.test/wal-2025 }
+
+byelections_results:
+  # tst_eng_2025: Lab consolidates from LD/Green/Con. Per Plan A's derive_transfer_matrix:
+  #   LD: prior 10 → actual 4 → flow = (10-4)/10 = 0.6
+  #   Green: prior 10 → actual 5 → flow = 0.5
+  #   Con: prior 5 → actual 3 → flow = 0.4
+  #   Other: prior 2 NOT > 2 (PRIOR_SHARE_THRESHOLD is exclusive at 2.0) → skipped
+  #   Reform: skipped (it's the threat).  Lab: skipped (it's the consolidator).
+  - { event_id: tst_eng_2025, party: lab,    votes: 6000, actual_share: 60.0, prior_share: 40.0 }
+  - { event_id: tst_eng_2025, party: ld,     votes:  400, actual_share:  4.0, prior_share: 10.0 }
+  - { event_id: tst_eng_2025, party: green,  votes:  500, actual_share:  5.0, prior_share: 10.0 }
+  - { event_id: tst_eng_2025, party: con,    votes:  300, actual_share:  3.0, prior_share:  5.0 }
+  - { event_id: tst_eng_2025, party: reform, votes: 2500, actual_share: 25.0, prior_share: 33.0 }
+  - { event_id: tst_eng_2025, party: snp,    votes:    0, actual_share:  0.0, prior_share:  0.0 }
+  - { event_id: tst_eng_2025, party: plaid,  votes:    0, actual_share:  0.0, prior_share:  0.0 }
+  - { event_id: tst_eng_2025, party: other,  votes:  300, actual_share:  3.0, prior_share:  2.0 }
+  # tst_wal_2025: Plaid consolidates. Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 0.667.
+  # Green prior 10 actual 5 → 0.5. Con prior 5 actual 2 → 0.6. Other prior 2 → skipped. Reform/Plaid skipped.
+  - { event_id: tst_wal_2025, party: plaid,  votes: 5000, actual_share: 50.0, prior_share: 25.0 }
+  - { event_id: tst_wal_2025, party: lab,    votes: 2000, actual_share: 20.0, prior_share: 50.0 }
+  - { event_id: tst_wal_2025, party: ld,     votes:  100, actual_share:  1.0, prior_share:  3.0 }
+  - { event_id: tst_wal_2025, party: green,  votes:  500, actual_share:  5.0, prior_share: 10.0 }
+  - { event_id: tst_wal_2025, party: con,    votes:  200, actual_share:  2.0, prior_share:  5.0 }
+  - { event_id: tst_wal_2025, party: reform, votes: 2000, actual_share: 20.0, prior_share:  5.0 }
+  - { event_id: tst_wal_2025, party: snp,    votes:    0, actual_share:  0.0, prior_share:  0.0 }
+  - { event_id: tst_wal_2025, party: other,  votes:  200, actual_share:  2.0, prior_share:  2.0 }
