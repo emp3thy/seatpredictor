@@ -2,7 +2,7 @@
   "venvPath": ".",
   "venv": ".venv",
   "extraPaths": ["."],
-  "include": ["schema", "data_engine", "tests", "scripts"],
+  "include": ["schema", "data_engine", "prediction_engine", "tests", "scripts"],
   "exclude": ["**/__pycache__", ".venv", "data", ".superpowers"],
   "pythonVersion": "3.11"
 }
