@@ -61,7 +61,7 @@ def compute_swing(
         & (polls["published_date"] > cutoff_lo)
         & (polls["published_date"] <= cutoff_hi)
     )
-    window = polls[filt]
+    window = polls.loc[filt]
     if window.empty:
         raise ValueError(
             f"no polls in window: geography={geography} as_of={as_of} window_days={window_days}"
@@ -71,7 +71,7 @@ def compute_swing(
     ge_shares = ge2024_national_share(results_2024, nation_filter=_GEO_TO_NATION_FILTER[geography])
     swing = {p: poll_means[p] - ge_shares[p] for p in PartyCode}
 
-    logger.info(
+    logger.debug(
         "Swing computed: as_of=%s geography=%s n_polls=%d swings=%s",
         as_of, geography, len(window),
         {p.value: round(v, 2) for p, v in swing.items()},
