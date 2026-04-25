@@ -1,4 +1,3 @@
-import pytest
 from prediction_engine.snapshot_loader import Snapshot
 from prediction_engine.strategies.uniform_swing import UniformSwingStrategy
 from schema.prediction import UniformSwingConfig
@@ -75,9 +74,10 @@ def test_uniform_swing_winner_tie_break_follows_partycode_order(tiny_snapshot_pa
     This test injects a synthetic Lab/Reform tie and asserts Lab wins.
     """
     import pandas as pd
-    snap = Snapshot(tiny_snapshot_path)
-    # Run predict, then synthesize a tie post-hoc by manually invoking the helper.
-    # Simpler: assert ordering via construction with hand-built shares.
+    # tiny_snapshot_path is requested only so this test runs in the prediction_engine
+    # test package context; the test exercises _add_winner_and_metadata directly with
+    # hand-built shares to isolate the tie-break behavior.
+    _ = tiny_snapshot_path
     from prediction_engine.strategies.uniform_swing import _add_winner_and_metadata
     row = {f"share_raw_{p.value}":       0.0 for p in PartyCode}
     row.update({f"share_predicted_{p.value}": 0.0 for p in PartyCode})

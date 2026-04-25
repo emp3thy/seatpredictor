@@ -114,4 +114,4 @@ def _compute_national_totals(per_seat: pd.DataFrame) -> pd.DataFrame:
         for party, seats in sub["predicted_winner"].value_counts().items():
             rows.append({"scope": "region", "scope_value": str(region), "party": party, "seats": int(seats)})
 
-    return pd.DataFrame(rows, columns=["scope", "scope_value", "party", "seats"])
+    return pd.DataFrame(rows, columns=pd.Index(["scope", "scope_value", "party", "seats"]))
