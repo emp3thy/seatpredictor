@@ -59,3 +59,15 @@ def test_snapshot_provenance_for_consolidator(tiny_snapshot_path):
     snap = Snapshot(tiny_snapshot_path)
     events = snap.provenance_for_consolidator("england", "lab")
     assert events == ["tst_eng_2025"]
+
+
+def test_snapshot_missing_file_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        Snapshot(tmp_path / "nonexistent.sqlite")
+
+
+def test_snapshot_manifest_cached(tiny_snapshot_path):
+    """Confirm `manifest` is cached_property: repeat access returns the same instance."""
+    snap = Snapshot(tiny_snapshot_path)
+    m1 = snap.manifest
+    assert snap.manifest is m1
