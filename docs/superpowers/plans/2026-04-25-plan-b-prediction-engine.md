@@ -3774,6 +3774,7 @@ dev = [
     "matplotlib>=3.8,<4",
     "nbformat>=5.10,<6",
     "nbclient>=0.10,<1",
+    "ipykernel>=6.29,<7",
 ]
 ```
 
@@ -3782,6 +3783,20 @@ Reinstall in compat editable mode:
 ```bash
 uv pip install --config-settings editable_mode=compat -e ".[dev]"
 ```
+
+Register the project venv as a Jupyter kernel named `python3` (this is the kernel name `nbconvert --execute` defaults to and the one our generator script writes into the notebook metadata). Skipping this is the most common reason `nbconvert --execute` fails with "No such kernel: python3":
+
+```bash
+uv run python -m ipykernel install --user --name python3 --display-name "Python 3 (seatpredictor)"
+```
+
+Verify the kernel registered:
+
+```bash
+.venv/Scripts/jupyter.exe kernelspec list
+```
+
+Expected: a `python3` entry pointing at the project's `.venv`.
 
 - [ ] **Step 2: Create `scripts/build_notebooks.py`**
 
