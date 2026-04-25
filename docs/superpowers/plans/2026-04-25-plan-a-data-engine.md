@@ -1341,7 +1341,9 @@ uv run pytest tests/data_engine/test_hoc_results.py -v
 
 Expected: ImportError.
 
-- [ ] **Step 4: Write implementation**
+- [ ] **Step 4: Write implementation (robust to varied real-world headers)**
+
+The real HoC CSV has 100+ columns and uses party-name strings (e.g. "Labour", "Conservative") or abbreviations (e.g. "Lab", "Con"). The parser matches columns by case-insensitive, whitespace-tolerant fuzzy lookup against a list of aliases per party, and silently skips unrecognised party columns rather than erroring.
 
 `data_engine/sources/hoc_results.py`:
 
@@ -1351,60 +1353,121 @@ import pandas as pd
 from schema.common import Nation, PartyCode
 
 
-# Maps the HoC CSV column names → our internal PartyCode
-_PARTY_COL_MAP: dict[str, PartyCode] = {
-    "Lab": PartyCode.LAB,
-    "Con": PartyCode.CON,
-    "LD": PartyCode.LD,
-    "Reform": PartyCode.REFORM,
-    "Green": PartyCode.GREEN,
-    "SNP": PartyCode.SNP,
-    "PC": PartyCode.PLAID,
-    "Other": PartyCode.OTHER,
+# Aliases the parser will accept for each party column. Lower-cased, trimmed.
+_PARTY_ALIASES: dict[PartyCode, set[str]] = {
+    PartyCode.LAB: {"lab", "labour", "lab co-op", "labour co-operative", "lab/co-op"},
+    PartyCode.CON: {"con", "conservative", "conservatives", "conservative & unionist"},
+    PartyCode.LD: {"ld", "lib dem", "libdem", "liberal democrat", "liberal democrats"},
+    PartyCode.REFORM: {"reform", "ref", "ruk", "reform uk"},
+    PartyCode.GREEN: {"green", "grn", "green party"},
+    PartyCode.SNP: {"snp", "scottish national party"},
+    PartyCode.PLAID: {"pc", "plaid", "plaid cymru"},
 }
 
-_NATION_MAP: dict[str, Nation] = {
-    "England": Nation.ENGLAND,
-    "Wales": Nation.WALES,
-    "Scotland": Nation.SCOTLAND,
-    "Northern Ireland": Nation.NORTHERN_IRELAND,
+# All other identified parties roll up into "other".
+_NATION_ALIASES: dict[str, Nation] = {
+    "england": Nation.ENGLAND,
+    "wales": Nation.WALES,
+    "scotland": Nation.SCOTLAND,
+    "northern ireland": Nation.NORTHERN_IRELAND,
 }
+
+# Identifying columns the parser expects. First match wins; checked case-insensitively.
+_ONS_COL_CANDIDATES = ("ons id", "ons_id", "constituency id", "constituency_id", "pcon code")
+_NAME_COL_CANDIDATES = ("constituency name", "constituency", "constituency_name")
+_REGION_COL_CANDIDATES = ("region name", "region", "european region")
+_NATION_COL_CANDIDATES = ("country name", "country", "nation")
+_VALID_VOTES_CANDIDATES = ("valid votes", "valid_votes", "total votes", "valid vote")
 
 
 def parse_hoc_results(csv_bytes: bytes) -> pd.DataFrame:
     """Parse the HoC Library 2024 GE results CSV into a tidy long DataFrame.
 
-    Returns one row per (constituency, party) with columns:
+    Robust to column-name variation. Skips party columns it doesn't recognise and rolls
+    them into 'other'. Returns one row per (constituency, party) with columns:
     ons_code, constituency_name, region, nation, party, votes, share.
     """
     raw = pd.read_csv(io.BytesIO(csv_bytes))
-
-    # Normalise column names — the real file may include trailing whitespace
     raw.columns = [c.strip() for c in raw.columns]
+    lower_to_actual = {c.lower(): c for c in raw.columns}
+
+    ons_col = _first_match(_ONS_COL_CANDIDATES, lower_to_actual)
+    name_col = _first_match(_NAME_COL_CANDIDATES, lower_to_actual)
+    region_col = _first_match(_REGION_COL_CANDIDATES, lower_to_actual)
+    nation_col = _first_match(_NATION_COL_CANDIDATES, lower_to_actual)
+    valid_col = _first_match(_VALID_VOTES_CANDIDATES, lower_to_actual)
+    if not all([ons_col, name_col, region_col, nation_col, valid_col]):
+        raise ValueError(
+            f"HoC CSV missing required columns. "
+            f"ons={ons_col} name={name_col} region={region_col} nation={nation_col} valid={valid_col} "
+            f"available={list(raw.columns)[:30]}..."
+        )
+
+    # Map each PartyCode to the actual CSV column it corresponds to (if any).
+    party_col_for: dict[PartyCode, str | None] = {}
+    matched_columns: set[str] = {ons_col, name_col, region_col, nation_col, valid_col}
+    for party, aliases in _PARTY_ALIASES.items():
+        for alias in aliases:
+            if alias in lower_to_actual:
+                party_col_for[party] = lower_to_actual[alias]
+                matched_columns.add(lower_to_actual[alias])
+                break
+        else:
+            party_col_for[party] = None
+
+    # Any numeric column NOT matched by a known party rolls up into "other".
+    other_cols = [
+        c for c in raw.columns
+        if c not in matched_columns
+        and pd.api.types.is_numeric_dtype(raw[c])
+        and c.lower() not in {"electorate", "valid votes", "valid_votes",
+                              "total votes", "rejected ballots", "majority"}
+    ]
 
     rows: list[dict] = []
     for _, r in raw.iterrows():
-        ons = str(r["ONS ID"]).strip()
-        name = str(r["Constituency name"]).strip()
-        region = str(r["Region name"]).strip()
-        nation = _NATION_MAP[str(r["Country name"]).strip()].value
-        valid = float(r["Valid votes"])
-        for col, party in _PARTY_COL_MAP.items():
-            votes = int(r.get(col, 0) or 0)
+        ons = str(r[ons_col]).strip()
+        name = str(r[name_col]).strip()
+        region = str(r[region_col]).strip()
+        nation_str = str(r[nation_col]).strip().lower()
+        if nation_str not in _NATION_ALIASES:
+            continue  # skip unknown nation rows
+        nation = _NATION_ALIASES[nation_str].value
+        valid = float(r[valid_col]) if pd.notna(r[valid_col]) else 0.0
+
+        # Per-party rows
+        other_votes = 0
+        for party, col in party_col_for.items():
+            votes = int(r[col]) if col and pd.notna(r[col]) else 0
             share = (votes / valid * 100.0) if valid > 0 else 0.0
             rows.append({
-                "ons_code": ons,
-                "constituency_name": name,
-                "region": region,
-                "nation": nation,
-                "party": party.value,
-                "votes": votes,
-                "share": round(share, 2),
+                "ons_code": ons, "constituency_name": name, "region": region,
+                "nation": nation, "party": party.value,
+                "votes": votes, "share": round(share, 2),
             })
+
+        # Roll up other columns into "other"
+        for c in other_cols:
+            v = r[c]
+            if pd.notna(v):
+                other_votes += int(v)
+        share = (other_votes / valid * 100.0) if valid > 0 else 0.0
+        rows.append({
+            "ons_code": ons, "constituency_name": name, "region": region,
+            "nation": nation, "party": PartyCode.OTHER.value,
+            "votes": other_votes, "share": round(share, 2),
+        })
     return pd.DataFrame(rows)
+
+
+def _first_match(candidates: tuple[str, ...], lower_to_actual: dict[str, str]) -> str | None:
+    for c in candidates:
+        if c in lower_to_actual:
+            return lower_to_actual[c]
+    return None
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run fixture test to verify it passes**
 
 ```bash
 uv run pytest tests/data_engine/test_hoc_results.py -v
@@ -1412,11 +1475,46 @@ uv run pytest tests/data_engine/test_hoc_results.py -v
 
 Expected: 5 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Real-world verification — fetch the actual CSV and inspect**
+
+The fixture uses invented column names. Before declaring this task done, fetch the real CSV and sanity-check the parser handles it.
+
+```bash
+mkdir -p data/raw_cache/hoc_results/$(date +%Y-%m-%d)
+curl -L -A "seatpredictor/0.0.1" \
+  "https://researchbriefings.files.parliament.uk/documents/CBP-10009/HoC-GE2024-results-by-constituency.csv" \
+  -o data/raw_cache/hoc_results/$(date +%Y-%m-%d)/content.bin
+echo '{"url":"hoc-real"}' > data/raw_cache/hoc_results/$(date +%Y-%m-%d)/meta.json
+```
+
+Then run:
+
+```python
+uv run python -c "
+from data_engine.sources.hoc_results import parse_hoc_results
+from pathlib import Path
+import sys
+csv_bytes = next(Path('data/raw_cache/hoc_results').rglob('content.bin')).read_bytes()
+df = parse_hoc_results(csv_bytes)
+n_seats = df['ons_code'].nunique()
+print(f'Constituencies parsed: {n_seats}')
+assert n_seats == 650, f'Expected 650 UK constituencies, got {n_seats}'
+print('Parties present:', sorted(df['party'].unique()))
+print('Nations present:', sorted(df['nation'].unique()))
+sums = df.groupby('ons_code')['share'].sum()
+out_of_range = sums[(sums < 99.0) | (sums > 101.0)]
+assert out_of_range.empty, f'Constituencies with shares not summing to 100: {out_of_range.head()}'
+print('All shares sum to ~100%. OK.')
+"
+```
+
+Expected: `Constituencies parsed: 650` and `All shares sum to ~100%`. If party-column matching fails (you see lots of "other" votes that should be Lab/Con/etc), inspect the CSV's headers (`csvkit` or `head -1`), and add the missing alias to `_PARTY_ALIASES` in `hoc_results.py`. Re-run.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add data_engine/sources/hoc_results.py tests/fixtures/hoc_results_sample.csv tests/data_engine/test_hoc_results.py
-git commit -m "feat(data_engine): add HoC results CSV parser with fixture-based test"
+git commit -m "feat(data_engine): add HoC results CSV parser robust to header variation"
 ```
 
 ---
@@ -1562,6 +1660,27 @@ def test_loader_filters_by_as_of_date():
     # Gorton (Feb 2026) excluded
     assert "gorton_denton_2026" not in set(events_df["event_id"])
     assert "caerphilly_senedd_2025" in set(events_df["event_id"])
+
+
+def test_loader_rejects_event_with_actual_shares_not_summing_to_100(tmp_path: Path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("""
+events:
+  - event_id: bad_event
+    name: Bad event
+    date: 2026-01-01
+    event_type: westminster_byelection
+    nation: england
+    region: X
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://example.com
+    candidates:
+      - { party: reform, votes: 100, actual_share: 50.0, prior_share: 30.0 }
+      - { party: lab,    votes: 100, actual_share: 30.0, prior_share: 50.0 }
+""", encoding="utf-8")
+    with pytest.raises(ValueError, match="actual_share entries sum"):
+        load_byelections(bad)
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -1572,7 +1691,9 @@ uv run pytest tests/data_engine/test_byelections.py -v
 
 Expected: ImportError.
 
-- [ ] **Step 4: Write implementation**
+- [ ] **Step 4: Write implementation with per-event share validation**
+
+The Pydantic models validate one row at a time, but cross-row invariants — actual_shares per event sum to ~100%, prior_shares sum to ~100%, all parties have a non-negative `prior_share` even if absent (defaulted to 0) — must be enforced in the loader.
 
 `data_engine/sources/byelections.py`:
 
@@ -1589,7 +1710,8 @@ def load_byelections(
     yaml_path: Path,
     as_of: date | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load by_elections.yaml. Validates each event against Pydantic models.
+    """Load by_elections.yaml. Validates each event against Pydantic models AND
+    cross-result invariants (shares sum to ~100% per event).
     Returns (events_df, results_df). If as_of is given, filters events with date <= as_of.
     """
     with yaml_path.open(encoding="utf-8") as f:
@@ -1603,9 +1725,29 @@ def load_byelections(
         event = ByElectionEvent.model_validate(entry)
         if as_of is not None and event.date > as_of:
             continue
-        event_rows.append(event.model_dump(mode="json"))
+
+        validated = []
         for c in candidates:
             r = ByElectionResult.model_validate({"event_id": event.event_id, **c})
+            validated.append(r)
+
+        # Cross-result validation: shares sum to ~100% (±0.5pp tolerance per spec §4.3)
+        actual_total = sum(r.actual_share for r in validated)
+        prior_total = sum(r.prior_share for r in validated)
+        if not (99.5 <= actual_total <= 100.5):
+            raise ValueError(
+                f"event {event.event_id}: actual_share entries sum to {actual_total:.2f} "
+                f"(expected 99.5-100.5). Check vote tallies in by_elections.yaml."
+            )
+        if not (99.5 <= prior_total <= 100.5):
+            raise ValueError(
+                f"event {event.event_id}: prior_share entries sum to {prior_total:.2f} "
+                f"(expected 99.5-100.5). Check prior_share values; missing parties should "
+                f"be listed with prior_share: 0.0."
+            )
+
+        event_rows.append(event.model_dump(mode="json"))
+        for r in validated:
             result_rows.append(r.model_dump(mode="json"))
 
     events_df = pd.DataFrame(event_rows)
@@ -1735,13 +1877,15 @@ uv run pytest tests/data_engine/test_wikipedia_polls.py -v
 
 Expected: ImportError.
 
-- [ ] **Step 4: Write implementation**
+- [ ] **Step 4: Write implementation (table-targeted, footnote-tolerant, multi-format-date)**
+
+The real Wikipedia polling page contains multiple `wikitable` instances — national VI tables (one per year of polling), seat-projection tables, and assorted others. We restrict parsing to **national voting-intention tables**: those whose header row contains "Pollster" *and* every party we expect (`Lab`, `Con`, `Reform`). Cells are cleaned of footnote refs (`[1]`, `[a]`), asterisks, and "—"/"N/A" empty markers. Date parsing handles five common formats.
 
 `data_engine/sources/wikipedia_polls.py`:
 
 ```python
 import re
-from datetime import date, datetime
+from datetime import date
 
 import httpx
 import pandas as pd
@@ -1751,25 +1895,26 @@ from bs4 import BeautifulSoup
 POLLS_URL = "https://en.wikipedia.org/wiki/Opinion_polling_for_the_next_United_Kingdom_general_election"
 USER_AGENT = "seatpredictor/0.0.1 (research; contact: see repository)"
 
-# Map Wikipedia table column headers → our internal column names.
+# Header text → internal column. Match is case-insensitive and exact (after strip).
 _PARTY_HEADER_MAP = {
-    "Lab": "lab",
-    "Con": "con",
-    "LD": "ld",
-    "Reform": "reform",
-    "Ref": "reform",
-    "Grn": "green",
-    "Green": "green",
-    "SNP": "snp",
-    "PC": "plaid",
-    "Plaid": "plaid",
-    "Others": "other",
-    "Other": "other",
+    "lab": "lab", "labour": "lab",
+    "con": "con", "conservative": "con",
+    "ld": "ld", "lib dem": "ld", "liberal democrats": "ld",
+    "reform": "reform", "ref": "reform", "ruk": "reform",
+    "grn": "green", "green": "green",
+    "snp": "snp",
+    "pc": "plaid", "plaid": "plaid",
+    "others": "other", "other": "other",
 }
 
+# Tables we accept must contain at least these party columns (post-normalisation).
+_REQUIRED_PARTIES_FOR_VI_TABLE = {"lab", "con", "reform"}
+
 _MONTH = {
-    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
 }
 
 
@@ -1782,42 +1927,104 @@ def fetch_polls_html(url: str) -> str:
 
 
 def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
-    """Parse polls from a Wikipedia polling page HTML.
+    """Parse polls from a Wikipedia polling page.
 
     Returns one row per poll with columns:
     pollster, fieldwork_start, fieldwork_end, published_date,
     sample_size, geography, con, lab, ld, reform, green, snp, plaid, other.
+
+    Strategy: walk every <table class="wikitable">; admit only tables whose header
+    contains a Pollster column AND at least Lab/Con/Reform party columns. Skip rows
+    that fail date parsing. Tolerates footnote refs, asterisks, "—" cells.
     """
     soup = BeautifulSoup(html, "lxml")
     rows: list[dict] = []
     for table in soup.find_all("table", class_="wikitable"):
-        header_cells = [_clean(th) for th in table.find_all("tr")[0].find_all(["th", "td"])]
-        if "Pollster" not in header_cells:
+        header_row = _find_header_row(table)
+        if header_row is None:
             continue
-        for tr in table.find_all("tr")[1:]:
+        header_cells = [_clean(th) for th in header_row.find_all(["th", "td"])]
+        if not header_cells:
+            continue
+
+        # Map header index → internal key (party slot or sentinel).
+        col_map = _build_column_map(header_cells)
+        if not col_map.get("pollster"):
+            continue
+        party_keys_present = {v for k, v in col_map.items() if v in {"lab", "con", "ld", "reform", "green", "snp", "plaid", "other"}}
+        if not _REQUIRED_PARTIES_FOR_VI_TABLE <= party_keys_present:
+            continue  # not a national-VI-shaped table
+
+        for tr in table.find_all("tr"):
+            if tr is header_row:
+                continue
             tds = [_clean(td) for td in tr.find_all(["td", "th"])]
             if len(tds) < len(header_cells):
                 continue
-            rec: dict = {h: v for h, v in zip(header_cells, tds)}
-            poll = _parse_row(rec, geography=geography)
+            poll = _parse_row(tds, col_map, geography=geography)
             if poll is not None:
                 rows.append(poll)
     return pd.DataFrame(rows)
 
 
+# --- helpers ---
+
+def _find_header_row(table) -> object | None:
+    """Pick the row that contains the column headers (usually the first <tr>)."""
+    rows = table.find_all("tr")
+    for tr in rows:
+        # Heuristic: header row has more <th> than <td>.
+        ths = len(tr.find_all("th"))
+        tds = len(tr.find_all("td"))
+        if ths > tds and ths >= 4:
+            return tr
+    return rows[0] if rows else None
+
+
+def _build_column_map(headers: list[str]) -> dict[str, str]:
+    """index → internal key. Returns dict of {pollster|sample|date|<party>: idx_str}.
+    The keys store stringified indices so we can look them up easily.
+    """
+    out: dict[str, str] = {}
+    for idx, h in enumerate(headers):
+        nl = _norm_header(h)
+        if nl == "pollster":
+            out["pollster"] = str(idx)
+        elif nl in {"sample size", "sample"}:
+            out["sample"] = str(idx)
+        elif nl in {"dates conducted", "date(s) conducted", "date conducted", "date", "fieldwork", "fieldwork dates"}:
+            out["date"] = str(idx)
+        elif nl in _PARTY_HEADER_MAP:
+            out[str(idx)] = _PARTY_HEADER_MAP[nl]
+    return out
+
+
+def _norm_header(s: str) -> str:
+    s = s.lower().strip()
+    s = re.sub(r"\[[^\]]*\]", "", s)  # remove footnote refs
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
 def _clean(node) -> str:
-    return re.sub(r"\s+", " ", node.get_text()).strip()
+    text = node.get_text()
+    text = re.sub(r"\[[^\]]*\]", "", text)   # footnote refs e.g. [1] [a]
+    text = text.replace(" ", " ").replace("–", "-").replace("—", "-")
+    text = text.replace("&ndash;", "-").replace("&mdash;", "-").replace("&nbsp;", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    text = text.rstrip("*").strip()
+    return text
 
 
-def _parse_row(rec: dict, *, geography: str) -> dict | None:
-    pollster = rec.get("Pollster", "").strip()
-    if not pollster:
+def _parse_row(tds: list[str], col_map: dict[str, str], *, geography: str) -> dict | None:
+    pollster = tds[int(col_map["pollster"])].strip() if "pollster" in col_map else ""
+    if not pollster or pollster.lower().startswith("source"):
         return None
-    date_text = rec.get("Date(s) conducted") or rec.get("Date") or ""
+    date_text = tds[int(col_map["date"])] if "date" in col_map else ""
     fws, fwe = _parse_date_range(date_text)
     if fws is None or fwe is None:
         return None
-    sample = _parse_int(rec.get("Sample size", "0"))
+    sample = _parse_int(tds[int(col_map["sample"])]) if "sample" in col_map else 0
     out = {
         "pollster": pollster,
         "fieldwork_start": fws.isoformat(),
@@ -1828,51 +2035,79 @@ def _parse_row(rec: dict, *, geography: str) -> dict | None:
         "con": 0.0, "lab": 0.0, "ld": 0.0, "reform": 0.0,
         "green": 0.0, "snp": 0.0, "plaid": 0.0, "other": 0.0,
     }
-    for hdr, key in _PARTY_HEADER_MAP.items():
-        if hdr in rec:
-            out[key] = _parse_pct(rec[hdr])
+    for k, v in col_map.items():
+        if k in {"pollster", "sample", "date"}:
+            continue
+        idx = int(k)
+        if idx >= len(tds):
+            continue
+        out[v] = _parse_pct(tds[idx])
     return out
 
 
 def _parse_date_range(text: str) -> tuple[date | None, date | None]:
-    # Examples: "18–20 Apr 2026", "15&ndash;17 Apr 2026", "29 Mar – 1 Apr 2026"
-    text = text.replace("&ndash;", "-").replace("–", "-").replace("—", "-")
-    m = re.match(r"^(\d{1,2})\s*-\s*(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$", text)
+    """Handles: '18-20 Apr 2026', '29 Mar - 1 Apr 2026', '18 Apr 2026',
+    '18 Apr 2026 - 1 May 2026', '29 Mar 2025 - 1 Apr 2026'.
+    """
+    text = text.strip()
+    # Single day: "18 Apr 2026"
+    m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", text)
+    if m:
+        d, mon, yr = m.groups()
+        if (k := mon.lower()[:max(3, len(mon))]) and (mon.lower() in _MONTH or mon.lower()[:3] in _MONTH):
+            month = _MONTH.get(mon.lower(), _MONTH.get(mon.lower()[:3]))
+            if month:
+                dd = date(int(yr), month, int(d))
+                return dd, dd
+
+    # Range same month: "18-20 Apr 2026"
+    m = re.match(r"^(\d{1,2})\s*-\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", text)
     if m:
         d1, d2, mon, yr = m.groups()
-        if mon[:3] not in _MONTH:
-            return None, None
-        month = _MONTH[mon[:3]]
-        return date(int(yr), month, int(d1)), date(int(yr), month, int(d2))
-    m = re.match(r"^(\d{1,2})\s+([A-Za-z]{3,})\s*-\s*(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$", text)
+        month = _MONTH.get(mon.lower(), _MONTH.get(mon.lower()[:3]))
+        if month:
+            return date(int(yr), month, int(d1)), date(int(yr), month, int(d2))
+
+    # Range cross-month same year: "29 Mar - 1 Apr 2026"
+    m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", text)
     if m:
         d1, mon1, d2, mon2, yr = m.groups()
-        if mon1[:3] not in _MONTH or mon2[:3] not in _MONTH:
-            return None, None
-        return (
-            date(int(yr), _MONTH[mon1[:3]], int(d1)),
-            date(int(yr), _MONTH[mon2[:3]], int(d2)),
-        )
+        m1 = _MONTH.get(mon1.lower(), _MONTH.get(mon1.lower()[:3]))
+        m2 = _MONTH.get(mon2.lower(), _MONTH.get(mon2.lower()[:3]))
+        if m1 and m2:
+            return date(int(yr), m1, int(d1)), date(int(yr), m2, int(d2))
+
+    # Range cross-year: "29 Dec 2025 - 3 Jan 2026"
+    m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*-\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", text)
+    if m:
+        d1, mon1, yr1, d2, mon2, yr2 = m.groups()
+        m1 = _MONTH.get(mon1.lower(), _MONTH.get(mon1.lower()[:3]))
+        m2 = _MONTH.get(mon2.lower(), _MONTH.get(mon2.lower()[:3]))
+        if m1 and m2:
+            return date(int(yr1), m1, int(d1)), date(int(yr2), m2, int(d2))
+
     return None, None
 
 
 def _parse_int(s: str) -> int:
-    s = s.replace(",", "").strip()
+    s = re.sub(r"[^\d]", "", s)
     try:
-        return int(s)
+        return int(s) if s else 0
     except ValueError:
         return 0
 
 
 def _parse_pct(s: str) -> float:
     s = s.replace("%", "").strip()
+    if s in {"", "-", "—", "N/A", "n/a"}:
+        return 0.0
     try:
         return float(s)
     except ValueError:
         return 0.0
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 5: Run fixture test to verify it passes**
 
 ```bash
 uv run pytest tests/data_engine/test_wikipedia_polls.py -v
@@ -1880,11 +2115,37 @@ uv run pytest tests/data_engine/test_wikipedia_polls.py -v
 
 Expected: 5 tests PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Real-world verification — fetch the live page**
+
+The fixture is synthetic. Before declaring this task done, fetch the live Wikipedia page and verify the parser extracts a plausible number of polls.
+
+```bash
+uv run python -c "
+from data_engine.sources.wikipedia_polls import fetch_polls_html, parse_polls_html, POLLS_URL
+html = fetch_polls_html(POLLS_URL)
+df = parse_polls_html(html, geography='GB')
+print(f'Polls extracted: {len(df)}')
+assert len(df) >= 30, f'Expected >=30 polls since GE 2024, got {len(df)}'
+print('Pollsters:', sorted(df[\"pollster\"].unique())[:10], '...')
+print('Date range:', df[\"published_date\"].min(), '→', df[\"published_date\"].max())
+sums = df[['con', 'lab', 'ld', 'reform', 'green', 'snp', 'plaid', 'other']].sum(axis=1)
+in_range = ((sums >= 95) & (sums <= 105)).sum()
+print(f'Polls with shares summing 95-105: {in_range} / {len(df)}')
+assert in_range >= len(df) * 0.9, 'Too many polls with implausible share sums; check parser'
+print('OK.')
+"
+```
+
+Expected: ≥30 polls extracted, ≥90% with share sums in [95, 105]. If the count is way off, the most likely culprits are:
+- A new column appeared in real tables not in `_PARTY_HEADER_MAP` — add it.
+- A new date format — extend `_parse_date_range`.
+- The header heuristic in `_find_header_row` rejected a real header row — relax the `ths >= 4` threshold.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add data_engine/sources/wikipedia_polls.py tests/fixtures/wikipedia_polls_sample.html tests/data_engine/test_wikipedia_polls.py
-git commit -m "feat(data_engine): add Wikipedia polls fetcher and HTML parser"
+git commit -m "feat(data_engine): add Wikipedia polls parser robust to footnotes/varied dates"
 ```
 
 ---
@@ -2089,6 +2350,11 @@ def _identify_consolidator(
     ev_results: pd.DataFrame,
     nation: Nation,
 ) -> PartyCode | None:
+    """Return the left-bloc party with the largest gain over its prior share.
+    Deterministic tie-break: when two parties tie on gain, pick the one with the
+    higher actual_share (the locally-stronger party); if still tied, pick by
+    party-code alphabetical order (final fallback so the function is total).
+    """
     left = LEFT_BLOC[nation]
     if not left:
         return None
@@ -2096,7 +2362,11 @@ def _identify_consolidator(
     if candidates.empty:
         return None
     candidates["gain"] = candidates["actual_share"] - candidates["prior_share"]
-    best = candidates.sort_values("gain", ascending=False).iloc[0]
+    candidates = candidates.sort_values(
+        by=["gain", "actual_share", "party"],
+        ascending=[False, False, True],
+    )
+    best = candidates.iloc[0]
     if best["gain"] <= 0:
         return None
     return PartyCode(best["party"])
@@ -2303,6 +2573,14 @@ SCHEMA_VERSION = 1
 
 @dataclass
 class BuildSnapshotConfig:
+    """Inputs for build_snapshot.
+
+    polls_geographies: which geographies to include in the polls table. v1 default is
+    ("GB",) only — the GB-wide page is the single fetch. Regional sub-pages
+    (Scotland/Wales/London) require additional fetches; they're plumbed through this
+    field but not wired up in v1's CLI to keep scope tight. Plan B may add them when
+    a strategy actually consumes regional swing data.
+    """
     as_of_date: date
     raw_cache: RawCache
     out_dir: Path
@@ -2637,6 +2915,7 @@ git commit -m "feat(data_engine): add seatpredict-data CLI (fetch, snapshot, bac
 ## Task 16: End-to-end smoke verification
 
 **Files:**
+- Create: `scripts/smoke_verify.py` — runnable verification with explicit assertions
 - Modify: `README.md` (add quick-start verification)
 
 - [ ] **Step 1: From a clean state, do a real fetch and snapshot**
@@ -2651,21 +2930,124 @@ Expected output:
 - `data/raw_cache/hoc_results/<today>/content.bin` exists
 - `data/snapshots/<today>__v1__<hash>.sqlite` exists
 
-- [ ] **Step 2: Inspect the snapshot from the SQLite CLI**
+If `fetch` errors with HTTP 4xx/5xx, the most likely cause is the Wikipedia or HoC URL has changed; check `POLLS_URL` in `wikipedia_polls.py` and `HOC_URL` in `cli.py`.
+
+- [ ] **Step 2: Create an automated verification script**
+
+`scripts/smoke_verify.py`:
+
+```python
+"""End-to-end smoke verification. Run after `seatpredict-data fetch` + `snapshot`.
+
+Asserts:
+- Snapshot file exists, contains all expected tables
+- 650 UK constituencies in results_2024 (full Westminster set)
+- Per-constituency shares sum to ~100%
+- Polls table has >=30 rows since GE 2024
+- Transfer matrix has at least one non-null cell
+- All four seeded by-elections present
+"""
+
+import sqlite3
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+
+EXPECTED_TABLES = {
+    "manifest", "polls", "results_2024",
+    "byelections_events", "byelections_results",
+    "transfer_weights", "transfer_weights_provenance",
+}
+EXPECTED_BYELECTIONS = {
+    "runcorn_helsby_2025", "hamilton_larkhall_stonehouse_2025",
+    "caerphilly_senedd_2025", "gorton_denton_2026",
+}
+
+
+def main() -> int:
+    snap_dir = Path("data/snapshots")
+    snaps = sorted(snap_dir.glob("*.sqlite"))
+    if not snaps:
+        print("FAIL: no snapshots found in data/snapshots/", file=sys.stderr)
+        return 1
+    snap = snaps[-1]
+    print(f"Verifying {snap}")
+    with sqlite3.connect(str(snap)) as conn:
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        missing = EXPECTED_TABLES - tables
+        if missing:
+            print(f"FAIL: missing tables {missing}", file=sys.stderr)
+            return 1
+        print(f"  Tables present: OK ({len(EXPECTED_TABLES)} expected)")
+
+        results = pd.read_sql_query("SELECT * FROM results_2024", conn)
+        n_seats = results["ons_code"].nunique()
+        if n_seats != 650:
+            print(f"FAIL: expected 650 constituencies, got {n_seats}", file=sys.stderr)
+            return 1
+        print(f"  Constituencies: 650 OK")
+
+        share_sums = results.groupby("ons_code")["share"].sum()
+        bad = share_sums[(share_sums < 99.0) | (share_sums > 101.0)]
+        if not bad.empty:
+            print(f"FAIL: {len(bad)} constituencies with shares not summing 99-101", file=sys.stderr)
+            print(bad.head(), file=sys.stderr)
+            return 1
+        print(f"  Share sums in 99-101: all 650 OK")
+
+        polls = pd.read_sql_query("SELECT * FROM polls", conn)
+        if len(polls) < 30:
+            print(f"FAIL: only {len(polls)} polls extracted (expected >=30)", file=sys.stderr)
+            return 1
+        print(f"  Polls extracted: {len(polls)} OK")
+
+        events = pd.read_sql_query("SELECT * FROM byelections_events", conn)
+        present = set(events["event_id"])
+        missing_evs = EXPECTED_BYELECTIONS - present
+        if missing_evs:
+            print(f"FAIL: missing by-elections {missing_evs}", file=sys.stderr)
+            return 1
+        print(f"  By-elections seeded: 4 OK")
+
+        weights = pd.read_sql_query("SELECT * FROM transfer_weights", conn)
+        if len(weights) == 0:
+            print("FAIL: transfer_weights is empty", file=sys.stderr)
+            return 1
+        print(f"  Transfer matrix cells: {len(weights)} OK")
+
+    print("\nAll smoke checks PASSED.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+- [ ] **Step 3: Run smoke verification**
+
+```bash
+uv run python scripts/smoke_verify.py
+```
+
+Expected: exits 0, prints "All smoke checks PASSED."
+
+If any assertion fails, the script prints which check failed and which file/values caused it. Common diagnoses:
+- "expected 650 constituencies": HoC parser dropped rows — inspect Country-name normalisation.
+- "X polls with implausible sums": Wikipedia parser missed a column — inspect headers in `_PARTY_HEADER_MAP`.
+- "transfer_weights is empty": all by-elections were filtered out — check `threat_party` values in `by_elections.yaml`.
+
+- [ ] **Step 4: Inspect the snapshot from the SQLite CLI**
 
 ```bash
 sqlite3 data/snapshots/*.sqlite ".tables"
-```
-
-Expected: `byelections_events`, `byelections_results`, `manifest`, `polls`, `results_2024`, `transfer_weights`, `transfer_weights_provenance`.
-
-```bash
 sqlite3 data/snapshots/*.sqlite "SELECT consolidator, source, weight, n FROM transfer_weights ORDER BY nation, consolidator, source;"
 ```
 
-Expected: rows for england/lab, england/green, scotland/lab, wales/plaid (with `source`-rows for each).
+Expected: rows for england/green, england/lab, scotland/lab, wales/plaid with their source-party flow rates.
 
-- [ ] **Step 3: Re-run snapshot — verify no-op**
+- [ ] **Step 5: Re-run snapshot — verify no-op**
 
 ```bash
 ls data/snapshots/*.sqlite | wc -l
@@ -2675,7 +3057,7 @@ ls data/snapshots/*.sqlite | wc -l
 
 Expected: count unchanged.
 
-- [ ] **Step 4: Update README quick-start with this verified flow**
+- [ ] **Step 6: Update README quick-start**
 
 Append to `README.md`:
 
@@ -2687,17 +3069,17 @@ After install, run:
 ```bash
 uv run seatpredict-data fetch
 uv run seatpredict-data snapshot
-sqlite3 data/snapshots/*.sqlite ".tables"
+uv run python scripts/smoke_verify.py
 ```
 
-You should see seven tables: `byelections_events`, `byelections_results`, `manifest`, `polls`, `results_2024`, `transfer_weights`, `transfer_weights_provenance`.
+The smoke verification asserts: 650 constituencies parsed, shares sum to ~100% per seat, ≥30 polls extracted, all four by-elections seeded, transfer matrix non-empty. If any check fails, the error message indicates which parser to inspect.
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add README.md
-git commit -m "docs: add end-to-end smoke verification to README"
+git add scripts/smoke_verify.py README.md
+git commit -m "feat: add scripts/smoke_verify.py and document end-to-end check"
 ```
 
 ---
