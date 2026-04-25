@@ -1,9 +1,12 @@
+import logging
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import yaml
 from schema.byelection import ByElectionEvent, ByElectionResult
+
+logger = logging.getLogger(__name__)
 
 
 def load_byelections(
@@ -19,10 +22,12 @@ def load_byelections(
 
     event_rows: list[dict] = []
     result_rows: list[dict] = []
+    n_before = 0
 
     for entry in raw["events"]:
         candidates = entry.pop("candidates", [])
         event = ByElectionEvent.model_validate(entry)
+        n_before += 1
         if as_of is not None and event.date > as_of:
             continue
 
@@ -50,6 +55,13 @@ def load_byelections(
         for r in validated:
             result_rows.append(r.model_dump(mode="json"))
 
+    n_after = len(event_rows)
+    logger.info(
+        "Loaded %d by-election events (%d filtered by as_of %s)",
+        n_after,
+        n_before - n_after,
+        as_of,
+    )
     events_df = pd.DataFrame(event_rows)
     results_df = pd.DataFrame(result_rows)
     return events_df, results_df

@@ -1,9 +1,12 @@
+import logging
 import re
 from datetime import date
 
 import httpx
 import pandas as pd
 from bs4 import BeautifulSoup, Tag
+
+logger = logging.getLogger(__name__)
 
 
 POLLS_URL = "https://en.wikipedia.org/wiki/Opinion_polling_for_the_next_United_Kingdom_general_election"
@@ -60,6 +63,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
     """
     soup = BeautifulSoup(html, "lxml")
     rows: list[dict] = []
+    n_admitted_tables = 0
     for table in soup.find_all("table", class_="wikitable"):
         header_row = _find_header_row(table)
         if header_row is None:
@@ -76,6 +80,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
         if not _REQUIRED_PARTIES_FOR_VI_TABLE <= party_keys_present:
             continue  # not a national-VI-shaped table
 
+        n_admitted_tables += 1
         for tr in table.find_all("tr"):
             if tr is header_row:
                 continue
@@ -89,6 +94,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(rows)
 
+    n_before_filter = len(rows)
     df = pd.DataFrame(rows)
     _SHARE_COLS = ["con", "lab", "ld", "reform", "green", "snp", "plaid", "other"]
     share_sum = df[_SHARE_COLS].sum(axis=1)
@@ -96,8 +102,14 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
     # seat-projection MRP tables (sums ~600 from seat counts), sub-national tables
     # (sums ~50–75), or tactical-voting scenario tables (sums ~80–92) that passed
     # the header-shape filter but aren't national VI.
-    df = df[(share_sum >= 95) & (share_sum <= 110)].reset_index(drop=True)
-    return df
+    filtered = df[(share_sum >= 95) & (share_sum <= 110)].reset_index(drop=True)
+    logger.info(
+        "Extracted %d poll rows from %d wikitables; %d filtered for implausible share sums",
+        len(filtered),
+        n_admitted_tables,
+        n_before_filter - len(filtered),
+    )
+    return filtered
 
 
 # --- helpers ---
@@ -169,8 +181,10 @@ def _parse_row(
     if date_idx >= len(td_nodes):
         return None
     date_node = td_nodes[date_idx]
+    date_text = _clean(date_node)
     fws, fwe = _parse_date_from_node(date_node)
     if fws is None or fwe is None:
+        logger.warning("Could not parse date for row from pollster %s: %r", pollster, date_text)
         return None
 
     sample_idx = int(col_map["sample"]) if "sample" in col_map else -1

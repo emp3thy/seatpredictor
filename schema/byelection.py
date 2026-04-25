@@ -21,11 +21,13 @@ class ByElectionEvent(BaseModel):
     exclude_from_matrix: bool = False
     narrative_url: HttpUrl | None = None
 
-    @model_validator(mode="after")
-    def _coerce_exclusion(self) -> "ByElectionEvent":
-        if self.threat_party is None:
-            object.__setattr__(self, "exclude_from_matrix", True)
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_exclusion(cls, data):
+        if isinstance(data, dict):
+            if data.get("threat_party") is None:
+                data["exclude_from_matrix"] = True
+        return data
 
 
 class ByElectionResult(BaseModel):

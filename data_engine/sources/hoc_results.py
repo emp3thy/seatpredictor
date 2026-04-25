@@ -1,6 +1,10 @@
 import io
+import logging
+
 import pandas as pd
 from schema.common import Nation, PartyCode
+
+logger = logging.getLogger(__name__)
 
 
 # Columns that must never be rolled into the "other" vote total.
@@ -93,6 +97,12 @@ def parse_hoc_results(csv_bytes: bytes) -> pd.DataFrame:
         and pd.api.types.is_numeric_dtype(raw[c])
         and not _is_excluded_column(c)
     ]
+    if other_cols:
+        logger.info(
+            "Rolled %d unrecognised columns into 'other': %s",
+            len(other_cols),
+            ", ".join(other_cols[:5]) + ("..." if len(other_cols) > 5 else ""),
+        )
 
     rows: list[dict] = []
     for _, r in raw.iterrows():
@@ -127,6 +137,8 @@ def parse_hoc_results(csv_bytes: bytes) -> pd.DataFrame:
             "nation": nation, "party": PartyCode.OTHER.value,
             "votes": other_votes, "share": round(share, 2),
         })
+    n_seats = len(raw)
+    logger.info("Parsed %d constituencies × parties = %d rows", n_seats, len(rows))
     return pd.DataFrame(rows)
 
 

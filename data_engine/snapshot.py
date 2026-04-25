@@ -1,10 +1,13 @@
 import hashlib
+import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 from data_engine.raw_cache import RawCache
 from data_engine.sources.byelections import load_byelections
 from data_engine.sources.hoc_results import parse_hoc_results
@@ -62,6 +65,7 @@ def build_snapshot(cfg: BuildSnapshotConfig) -> Path:
         / f"{cfg.as_of_date.isoformat()}__v{SCHEMA_VERSION}__{input_hash}.sqlite"
     )
     if out_path.exists():
+        logger.info("Snapshot %s already exists; reusing", out_path.name)
         return out_path
 
     # Parse each source
@@ -99,6 +103,14 @@ def build_snapshot(cfg: BuildSnapshotConfig) -> Path:
         if tmp_path.exists():
             tmp_path.unlink()
         raise
+    logger.info(
+        "Built snapshot %s (polls=%d, results=%d, events=%d, weights=%d)",
+        out_path.name,
+        len(polls_df),
+        len(results_df),
+        len(events_df),
+        len(cells_df),
+    )
     return out_path
 
 

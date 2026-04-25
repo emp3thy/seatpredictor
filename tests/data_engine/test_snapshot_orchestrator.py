@@ -1,14 +1,14 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
-import pandas as pd
+
 import pytest
-import respx
-import httpx
 from data_engine.snapshot import build_snapshot, BuildSnapshotConfig, SCHEMA_VERSION
 from data_engine.sqlite_io import open_snapshot_db, read_dataframe, read_manifest
 from data_engine.raw_cache import RawCache
 from data_engine.sources.wikipedia_polls import POLLS_URL
 
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 HOC_URL = "https://researchbriefings.files.parliament.uk/documents/CBP-10009/HoC-GE2024-results-by-constituency.csv"
 
@@ -36,7 +36,7 @@ def test_builds_snapshot_with_all_tables(tmp_path: Path, primed_cache: RawCache)
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     )
     path = build_snapshot(cfg)
     assert path.exists()
@@ -64,7 +64,7 @@ def test_snapshot_filename_includes_input_hash(tmp_path: Path, primed_cache: Raw
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     )
     path = build_snapshot(cfg)
     assert path.name.startswith("2026-04-25__v1__")
@@ -77,7 +77,7 @@ def test_idempotent_rerun_returns_same_path(tmp_path: Path, primed_cache: RawCac
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     )
     p1 = build_snapshot(cfg)
     p2 = build_snapshot(cfg)
@@ -101,13 +101,13 @@ def test_as_of_filter_changes_input_hash(tmp_path: Path, primed_cache: RawCache)
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     ))
     p_dec = build_snapshot(BuildSnapshotConfig(
         as_of_date=date(2025, 12, 31),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     ))
     assert p_apr != p_dec
 
@@ -123,7 +123,7 @@ def test_partial_failure_does_not_leave_corrupt_snapshot(
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=out,
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     )
     # Inject a failure in the third write_dataframe call
     from data_engine import snapshot as snapshot_mod
@@ -152,8 +152,35 @@ def test_polls_geographies_v1_guard(tmp_path: Path, primed_cache: RawCache):
         as_of_date=date(2026, 4, 25),
         raw_cache=primed_cache,
         out_dir=tmp_path / "snapshots",
-        byelections_yaml=Path("data/hand_curated/by_elections.yaml"),
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
         polls_geographies=("GB", "Wales"),
     )
     with pytest.raises(NotImplementedError, match="v1 supports"):
         build_snapshot(cfg)
+
+
+def test_manifest_round_trip_matches_filename_hash(tmp_path: Path, primed_cache: RawCache):
+    """A freshly-built snapshot's manifest.content_hash must equal the hash in its filename,
+    and source_versions must round-trip as a dict[str,str] with the expected keys."""
+    out = tmp_path / "snapshots"
+    cfg = BuildSnapshotConfig(
+        as_of_date=date(2026, 4, 25),
+        raw_cache=primed_cache,
+        out_dir=out,
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
+    )
+    path = build_snapshot(cfg)
+    # Filename is "<as_of>__v<schema>__<hash>.sqlite"; extract hash segment
+    filename_hash = path.stem.split("__")[2]
+
+    with open_snapshot_db(path) as conn:
+        manifest = read_manifest(conn)
+
+    assert manifest.content_hash == filename_hash
+    assert isinstance(manifest.source_versions, dict)
+    assert set(manifest.source_versions.keys()) == {
+        "wikipedia_polls", "hoc_results", "byelections_yaml", "polls_geographies"
+    }
+    for k, v in manifest.source_versions.items():
+        assert isinstance(k, str)
+        assert isinstance(v, str)

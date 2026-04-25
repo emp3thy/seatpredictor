@@ -1,5 +1,9 @@
+import logging
+
 import pandas as pd
 from schema.common import LEFT_BLOC, Nation, PartyCode
+
+logger = logging.getLogger(__name__)
 
 
 PRIOR_SHARE_THRESHOLD = 2.0  # percentage points
@@ -46,6 +50,7 @@ def derive_transfer_matrix(
             "event_id": event_id,
         })
 
+    n_events = len(eligible)
     if not cell_records:
         empty_cells = pd.DataFrame(columns=["nation", "consolidator", "source", "weight", "n"])
         empty_prov = pd.DataFrame(columns=["nation", "consolidator", "event_id"])
@@ -56,7 +61,8 @@ def derive_transfer_matrix(
         raw.groupby(["nation", "consolidator", "source"], as_index=False)
         .agg(weight=("weight", "mean"), n=("event_id", "nunique"))
     )
-    provenance = pd.DataFrame(prov_records).drop_duplicates()
+    provenance = pd.DataFrame(prov_records)
+    logger.info("Derived %d matrix cells from %d eligible events", len(cells), n_events)
     return cells, provenance
 
 
@@ -100,8 +106,6 @@ def _compute_flows(
         prior = float(r["prior_share"])
         actual = float(r["actual_share"])
         if prior <= PRIOR_SHARE_THRESHOLD:
-            continue
-        if prior <= 0:
             continue
         raw_flow = (prior - actual) / prior
         flows[party] = max(0.0, min(1.0, raw_flow))

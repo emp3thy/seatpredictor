@@ -1,3 +1,4 @@
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -24,6 +25,11 @@ def _raw_cache() -> RawCache:
 @click.group()
 def main():
     """Data engine: fetch sources, build snapshots."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)-30s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
 
 @main.command()
