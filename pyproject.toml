@@ -26,7 +26,9 @@ seatpredict-data = "data_engine.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["schema*", "data_engine*"]
-exclude = ["tests*", "data*", "docs*", "notebooks*"]
+# NB: do NOT use "data*" here — it matches "data_engine". Exclude the literal
+# "data" directory only.
+exclude = ["tests*", "data", "docs*", "notebooks*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
