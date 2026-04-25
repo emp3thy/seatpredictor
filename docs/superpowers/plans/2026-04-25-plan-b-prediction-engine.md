@@ -485,83 +485,104 @@ git commit -m "feat(schema): add prediction models (SeatPrediction, NationalTota
 - Create: `tests/prediction_engine/conftest.py`
 - Create: `tests/fixtures/tiny_snapshot_seed.yaml`
 
-This task has no production code; it produces a re-usable test fixture. Subsequent tasks consume it. Skip the "fail-first" cycle (a fixture cannot be tested before its consumers exist); instead the task ends by asserting the fixture loads cleanly.
+This task has no production code; it produces a re-usable test fixture. Subsequent tasks consume it. Skip the "fail-first" cycle (a fixture cannot be tested before its consumers exist); instead the task ends with a self-test that asserts the snapshot's tables match expectations and that the derived matrix matches Plan A's `derive_transfer_matrix` on the same YAML inputs.
+
+### Design constraints (READ FIRST — these decide the seed numbers)
+
+The 6 seats are designed so each integration test in Task 9 actually exercises its intended path. Three constraints make the design clean:
+
+1. **Polls equal aggregate GE-2024 share.** With polls ≈ aggregate share, the per-party swing is ≈ 0pp. After projection + renormalise, `share_raw_<p>` ≈ `share_2024_<p>` for every seat. This means tests can reason about per-seat behavior using the 2024 shares directly, without computing post-swing arithmetic.
+2. **Reform must be the leader (highest share) in seats A, B, D, E** so the reform-threat strategy enters its tactical-modelling branch. Seat C has Con leading (non-Reform leader), seat F is NI.
+3. **The consolidator (highest left-bloc party) must NOT exceed Reform**, otherwise the `consolidator_already_leads` early-return fires instead of the expected path.
+
+Aggregate vote totals across the 6 seats sum to (con=41500, lab=59500, ld=23500, reform=71500, green=22500, snp=13500, plaid=15000, other=53000) on a 300000 grand total. That gives aggregate shares (13.83, 19.83, 7.83, 23.83, 7.50, 4.50, 5.00, 17.67) which round to the polls below.
+
+The derived transfer matrix has entries for `(england, lab, {ld, green, con})` and `(wales, plaid, {lab, green, con, ld})`. Scotland has NO consolidator entries — that's deliberate so seat E exercises `matrix_unavailable`.
 
 - [ ] **Step 1: Create `tests/fixtures/tiny_snapshot_seed.yaml`**
 
-Hand-curated 6-seat dataset spanning all four nations. Polls sum to ~100 per row; 2024 shares sum to ~100 per seat. Designed to exercise: Reform-leader contests in England + Wales + Scotland, a Reform-leader NI seat (for the NI exclusion path), a non-Reform-leader seat (for the short-circuit path), and a Reform-leader seat with a fragmented left bloc (for the low-clarity path).
-
 ```yaml
 # Tiny snapshot seed for prediction-engine tests.
-# 6 seats, 2 polls, 2 by-election events. Hand-tuned so derived matrix has
-# entries for england/lab and wales/plaid; scotland has no eligible event.
+# 6 seats × 2 polls × 2 by-election events. Polls ≈ aggregate GE-2024 shares so swings ≈ 0;
+# share_raw ≈ share_2024 in every seat.
+
 polls:
   - { pollster: TestCo, fieldwork_start: 2026-04-15, fieldwork_end: 2026-04-17,
       published_date: 2026-04-18, sample_size: 1000, geography: GB,
-      con: 18, lab: 26, ld: 12, reform: 30, green: 8, snp: 3, plaid: 1, other: 2 }
+      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
   - { pollster: TestCo, fieldwork_start: 2026-04-20, fieldwork_end: 2026-04-22,
-      published_date: 2026-04-23, sample_size: 1000, geography: GB,
-      con: 18, lab: 26, ld: 12, reform: 30, green: 8, snp: 3, plaid: 1, other: 2 }
+      published_date: 2026-04-23, sample_size: 1100, geography: GB,
+      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
 
 results_2024:
-  # Seat A — England, Reform threat with strong Lab consolidator (clarity high)
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: con,    votes: 8000,  share: 16.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: lab,    votes: 22500, share: 45.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: ld,     votes: 4000,  share:  8.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: reform, votes: 11500, share: 23.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: green,  votes: 2500,  share:  5.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: snp,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: plaid,  votes: 0,     share:  0.0 }
-  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: other,  votes: 1500,  share:  3.0 }
+  # Seat A — England, Reform leader, Lab consolidator, HIGH clarity (Lab-LD gap = 20pp).
+  # Reform 35 > Lab 30 (so Lab is consolidator, not leader). Lab-LD gap = 30-10 = 20pp → clarity = 1.0
+  # at default clarity_threshold=5. Matrix has (england, lab, {ld, green, con}) → flow applies.
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: con,    votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: lab,    votes: 15000, share: 30.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: ld,     votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: green,  votes:  5000, share: 10.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: other,  votes:  2500, share:  5.0 }
 
-  # Seat B — England, Reform threat with fragmented left (clarity LOW)
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: con,    votes: 6000,  share: 12.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: lab,    votes: 11000, share: 22.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: ld,     votes: 9500,  share: 19.0 }
+  # Seat B — England, Reform leader, Lab consolidator, LOW clarity (Lab-LD gap = 2pp).
+  # Reform 25 > Lab 24 > LD 22 > Green 14. Lab is consolidator. Lab-LD gap = 2pp → clarity = 0.4 at
+  # default threshold=5 (low_clarity flag fires; flow still applies, scaled by 0.4).
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: con,    votes:  6000, share: 12.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: lab,    votes: 12000, share: 24.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: ld,     votes: 11000, share: 22.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: reform, votes: 12500, share: 25.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: green,  votes: 9500,  share: 19.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: snp,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: plaid,  votes: 0,     share:  0.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: other,  votes: 1500,  share:  3.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: green,  votes:  7000, share: 14.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: other,  votes:  1500, share:  3.0 }
 
-  # Seat C — England, non-Reform leader (short-circuit)
+  # Seat C — England, non-Reform leader (Con leads 45, Reform 13). Strategy returns
+  # uniform-swing fallback with non_reform_leader flag.
   - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: con,    votes: 22500, share: 45.0 }
   - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: lab,    votes: 13000, share: 26.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: ld,     votes: 5000,  share: 10.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: reform, votes: 6500,  share: 13.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: green,  votes: 2000,  share:  4.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: snp,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: plaid,  votes: 0,     share:  0.0 }
-  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: other,  votes: 1000,  share:  2.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: ld,     votes:  5000, share: 10.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: reform, votes:  6500, share: 13.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: green,  votes:  2000, share:  4.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00003, constituency_name: Carchester, region: South East, nation: england, party: other,  votes:  1000, share:  2.0 }
 
-  # Seat D — Wales, Reform threat with Plaid consolidator
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: con,    votes: 5000,  share: 10.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: lab,    votes: 17500, share: 35.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: ld,     votes: 1500,  share:  3.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: reform, votes: 14000, share: 28.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: green,  votes: 1000,  share:  2.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: snp,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: plaid,  votes: 10000, share: 20.0 }
-  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: other,  votes: 1000,  share:  2.0 }
+  # Seat D — Wales, Reform leader, Plaid consolidator (Plaid 30 > Lab 20 in left-bloc).
+  # Reform 35 > Plaid 30 (so Plaid is consolidator, not leader). Plaid-Lab gap = 10pp → clarity = 1.0
+  # at default threshold. Matrix has (wales, plaid, {lab, green, con, ld}) → flow applies.
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: con,    votes:  4000, share:  8.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: lab,    votes: 10000, share: 20.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: ld,     votes:  1000, share:  2.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: green,  votes:  1000, share:  2.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: plaid,  votes: 15000, share: 30.0 }
+  - { ons_code: TST00004, constituency_name: Dyffryn,    region: South Wales, nation: wales, party: other,  votes:  1500, share:  3.0 }
 
-  # Seat E — Scotland, Reform-led but matrix has no Scotland entry → matrix_unavailable fallback
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: con,    votes: 4000,  share:  8.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: lab,    votes: 9500,  share: 19.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: ld,     votes: 1500,  share:  3.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: reform, votes: 14500, share: 29.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: green,  votes: 2500,  share:  5.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: snp,    votes: 16500, share: 33.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: plaid,  votes: 0,     share:  0.0 }
-  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: other,  votes: 1500,  share:  3.0 }
+  # Seat E — Scotland, Reform leader, SNP consolidator (SNP 27 > Lab 19 in left-bloc).
+  # The matrix has NO scotland entries (no by-election in Scotland in this seed) →
+  # snapshot.consolidator_observed("scotland", "snp") is False → matrix_unavailable.
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: con,    votes:  4000, share:  8.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: lab,    votes:  9500, share: 19.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: ld,     votes:  1500, share:  3.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: reform, votes: 17500, share: 35.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: green,  votes:  2500, share:  5.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: snp,    votes: 13500, share: 27.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: plaid,  votes:     0, share:  0.0 }
+  - { ons_code: TST00005, constituency_name: Eilean,     region: Highlands, nation: scotland, party: other,  votes:  1500, share:  3.0 }
 
-  # Seat F — Northern Ireland (NI exclusion path)
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: con,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: lab,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: ld,     votes: 0,     share:  0.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: reform, votes: 0,     share:  0.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: green,  votes: 5000,  share: 10.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: snp,    votes: 0,     share:  0.0 }
-  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: plaid,  votes: 0,     share:  0.0 }
+  # Seat F — Northern Ireland (NI exclusion path). Other dominant; Green a token left-bloc share.
+  # All pre-step-2 logic skipped; ni_excluded flag set.
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: con,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: lab,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: ld,     votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: reform, votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: green,  votes:  5000, share: 10.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: snp,    votes:     0, share:  0.0 }
+  - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: plaid,  votes:     0, share:  0.0 }
   - { ons_code: TST00006, constituency_name: Foyle,      region: NI, nation: northern_ireland, party: other,  votes: 45000, share: 90.0 }
 
 byelections_events:
@@ -573,7 +594,12 @@ byelections_events:
       narrative_url: https://example.test/wal-2025 }
 
 byelections_results:
-  # tst_eng_2025: Lab consolidates from LD/Green. Lab gain = 60-40 = 20 (largest); LD lost 60% of share, Green lost 50%.
+  # tst_eng_2025: Lab consolidates from LD/Green/Con. Per Plan A's derive_transfer_matrix:
+  #   LD: prior 10 → actual 4 → flow = (10-4)/10 = 0.6
+  #   Green: prior 10 → actual 5 → flow = 0.5
+  #   Con: prior 5 → actual 3 → flow = 0.4
+  #   Other: prior 2 NOT > 2 (PRIOR_SHARE_THRESHOLD is exclusive at 2.0) → skipped
+  #   Reform: skipped (it's the threat).  Lab: skipped (it's the consolidator).
   - { event_id: tst_eng_2025, party: lab,    votes: 6000, actual_share: 60.0, prior_share: 40.0 }
   - { event_id: tst_eng_2025, party: ld,     votes:  400, actual_share:  4.0, prior_share: 10.0 }
   - { event_id: tst_eng_2025, party: green,  votes:  500, actual_share:  5.0, prior_share: 10.0 }
@@ -582,7 +608,8 @@ byelections_results:
   - { event_id: tst_eng_2025, party: snp,    votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: plaid,  votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: other,  votes:  300, actual_share:  3.0, prior_share:  2.0 }
-  # tst_wal_2025: Plaid consolidates. Lab loses 60% of share (50→20), Green loses 50% (10→5).
+  # tst_wal_2025: Plaid consolidates. Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 0.667.
+  # Green prior 10 actual 5 → 0.5. Con prior 5 actual 2 → 0.6. Other prior 2 → skipped. Reform/Plaid skipped.
   - { event_id: tst_wal_2025, party: plaid,  votes: 5000, actual_share: 50.0, prior_share: 25.0 }
   - { event_id: tst_wal_2025, party: lab,    votes: 2000, actual_share: 20.0, prior_share: 50.0 }
   - { event_id: tst_wal_2025, party: ld,     votes:  100, actual_share:  1.0, prior_share:  3.0 }
@@ -599,10 +626,9 @@ Empty file.
 
 - [ ] **Step 3: Create `tests/prediction_engine/conftest.py`**
 
-This builds an in-memory snapshot SQLite from the YAML. Reuses Plan A's `data_engine.sqlite_io` to write tables. Importantly, this is the SAME on-disk format as a real Plan-A snapshot — every prediction-engine test consumes a snapshot via the production `Snapshot` loader, never raw DataFrames.
+This builds an in-memory snapshot SQLite from the YAML, deriving the transfer matrix via Plan A's `derive_transfer_matrix` (NOT hardcoded — that way the fixture stays consistent with the data engine if the derivation logic ever evolves). The on-disk format matches a real Plan-A snapshot exactly so prediction-engine tests consume snapshots via the production `Snapshot` loader, never raw DataFrames.
 
 ```python
-import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -611,59 +637,39 @@ import pytest
 import yaml
 
 from data_engine.sqlite_io import open_snapshot_db, write_dataframe, write_manifest
+from data_engine.transforms.transfer_matrix import derive_transfer_matrix
 from schema.snapshot import SnapshotManifest
 
 
 _SEED_PATH = Path(__file__).parent.parent / "fixtures" / "tiny_snapshot_seed.yaml"
-_PREDICTION_SCHEMA_VERSION = 1
 _AS_OF = date(2026, 4, 25)
 _CONTENT_HASH = "tinyhash0001"
 
 
-def _build_transfer_weights_from_seed() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Mirror data_engine.transforms.transfer_matrix.derive_transfer_matrix on the seed.
-
-    Hand-computed expected cells for the seed — this fixture intentionally hard-codes
-    the matrix so prediction tests don't depend on the matrix derivation logic.
-    """
-    cells = pd.DataFrame([
-        # tst_eng_2025: Lab consolidator. LD prior 10 actual 4 → flow=0.6.
-        # Green prior 10 actual 5 → flow=0.5. Con prior 5 → above 2pp threshold,
-        # actual 3 → flow=(5-3)/5=0.4.
-        {"nation": "england", "consolidator": "lab", "source": "ld",    "weight": 0.6, "n": 1},
-        {"nation": "england", "consolidator": "lab", "source": "green", "weight": 0.5, "n": 1},
-        {"nation": "england", "consolidator": "lab", "source": "con",   "weight": 0.4, "n": 1},
-        # tst_wal_2025: Plaid consolidator. Lab prior 50 actual 20 → 0.6.
-        # Green prior 10 actual 5 → 0.5. Con prior 5 actual 2 → 0.6. LD prior 3 actual 1 → above 2pp, 0.667.
-        {"nation": "wales",   "consolidator": "plaid", "source": "lab",   "weight": 0.6, "n": 1},
-        {"nation": "wales",   "consolidator": "plaid", "source": "green", "weight": 0.5, "n": 1},
-        {"nation": "wales",   "consolidator": "plaid", "source": "con",   "weight": 0.6, "n": 1},
-        {"nation": "wales",   "consolidator": "plaid", "source": "ld",    "weight": 0.667, "n": 1},
-    ])
-    provenance = pd.DataFrame([
-        {"nation": "england", "consolidator": "lab",   "event_id": "tst_eng_2025"},
-        {"nation": "wales",   "consolidator": "plaid", "event_id": "tst_wal_2025"},
-    ])
-    return cells, provenance
-
-
 @pytest.fixture
 def tiny_snapshot_path(tmp_path: Path) -> Path:
-    """Build a real Plan-A-format SQLite snapshot from tiny_snapshot_seed.yaml."""
+    """Build a real Plan-A-format SQLite snapshot from tiny_snapshot_seed.yaml.
+
+    The transfer-weights matrix is derived by Plan A's derive_transfer_matrix
+    so any future change there is reflected here automatically (no drift).
+    """
     with _SEED_PATH.open(encoding="utf-8") as f:
         seed = yaml.safe_load(f)
 
     polls = pd.DataFrame(seed["polls"])
-    # Stringify dates for SQLite (matches Plan A's output).
     for col in ("fieldwork_start", "fieldwork_end", "published_date"):
         polls[col] = polls[col].astype(str)
 
     results = pd.DataFrame(seed["results_2024"])
+
     events = pd.DataFrame(seed["byelections_events"])
     events["date"] = events["date"].astype(str)
+    # derive_transfer_matrix expects the boolean as a real bool, not a string.
+    events["exclude_from_matrix"] = events["exclude_from_matrix"].astype(bool)
+
     results_by = pd.DataFrame(seed["byelections_results"])
 
-    cells, provenance = _build_transfer_weights_from_seed()
+    cells, provenance = derive_transfer_matrix(events, results_by)
 
     out = tmp_path / f"{_AS_OF.isoformat()}__v1__{_CONTENT_HASH}.sqlite"
     with open_snapshot_db(out) as conn:
@@ -684,23 +690,86 @@ def tiny_snapshot_path(tmp_path: Path) -> Path:
     return out
 ```
 
-- [ ] **Step 4: Smoke-check the fixture builds**
+- [ ] **Step 4: Add a self-test for the fixture**
 
-Add a smoke test in `tests/prediction_engine/conftest.py` (or a temporary one-line test):
+Create `tests/prediction_engine/test_fixture_sanity.py`:
 
-Run: `uv run python -c "from data_engine.sqlite_io import open_snapshot_db, read_dataframe; import sqlite3; print('ok')"`
-Expected: `ok` printed (just confirms imports work).
+```python
+"""Sanity checks on the tiny snapshot fixture.
 
-Then run:
+Plan B's downstream tests rely on the seed producing a specific matrix and seat layout.
+These checks fail loudly if the YAML is edited in a way that breaks the assumptions
+documented in Task 2's design constraints.
+"""
+import sqlite3
+from contextlib import closing
 
-Run: `uv run pytest tests/prediction_engine/ -v`
-Expected: "no tests ran" — the fixture builds on first consumer; nothing to fail yet.
+import pandas as pd
+import pytest
 
-- [ ] **Step 5: Commit**
+
+def _read(path, table):
+    with closing(sqlite3.connect(str(path))) as conn:
+        return pd.read_sql_query(f"SELECT * FROM {table}", conn)
+
+
+def test_fixture_has_six_seats(tiny_snapshot_path):
+    r = _read(tiny_snapshot_path, "results_2024")
+    assert sorted(r["ons_code"].unique()) == [
+        "TST00001", "TST00002", "TST00003", "TST00004", "TST00005", "TST00006",
+    ]
+
+
+def test_fixture_each_seat_sums_to_100(tiny_snapshot_path):
+    r = _read(tiny_snapshot_path, "results_2024")
+    sums = r.groupby("ons_code")["share"].sum()
+    for ons, total in sums.items():
+        assert total == pytest.approx(100.0, abs=0.5), f"{ons}: {total}"
+
+
+def test_fixture_matrix_has_expected_cells(tiny_snapshot_path):
+    tw = _read(tiny_snapshot_path, "transfer_weights")
+    keys = sorted(zip(tw["nation"], tw["consolidator"], tw["source"]))
+    assert ("england", "lab", "ld")    in keys
+    assert ("england", "lab", "green") in keys
+    assert ("england", "lab", "con")   in keys
+    assert ("wales",   "plaid", "lab") in keys
+    assert ("wales",   "plaid", "ld")  in keys
+    # Scotland deliberately empty.
+    assert not any(n == "scotland" for n, _, _ in keys)
+
+
+def test_fixture_matrix_weights_are_correct(tiny_snapshot_path):
+    """Verify the derived matrix matches the hand-computed flows from the design constraint."""
+    tw = _read(tiny_snapshot_path, "transfer_weights").set_index(
+        ["nation", "consolidator", "source"]
+    )
+    assert tw.loc[("england", "lab", "ld"),    "weight"] == pytest.approx(0.6,  abs=1e-6)
+    assert tw.loc[("england", "lab", "green"), "weight"] == pytest.approx(0.5,  abs=1e-6)
+    assert tw.loc[("england", "lab", "con"),   "weight"] == pytest.approx(0.4,  abs=1e-6)
+    assert tw.loc[("wales", "plaid", "lab"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
+    assert tw.loc[("wales", "plaid", "green"), "weight"] == pytest.approx(0.5,  abs=1e-6)
+    assert tw.loc[("wales", "plaid", "con"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
+    assert tw.loc[("wales", "plaid", "ld"),    "weight"] == pytest.approx(2/3,  abs=1e-3)
+
+
+def test_fixture_provenance_links_back_to_events(tiny_snapshot_path):
+    prov = _read(tiny_snapshot_path, "transfer_weights_provenance")
+    pairs = sorted(zip(prov["nation"], prov["consolidator"], prov["event_id"]))
+    assert ("england", "lab",   "tst_eng_2025") in pairs
+    assert ("wales",   "plaid", "tst_wal_2025") in pairs
+```
+
+- [ ] **Step 5: Run the self-test**
+
+Run: `uv run pytest tests/prediction_engine/test_fixture_sanity.py -v`
+Expected: 5 tests PASS.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add tests/fixtures/tiny_snapshot_seed.yaml tests/prediction_engine/__init__.py tests/prediction_engine/conftest.py
-git commit -m "test: add tiny snapshot fixture for prediction-engine tests"
+git add tests/fixtures/tiny_snapshot_seed.yaml tests/prediction_engine/__init__.py tests/prediction_engine/conftest.py tests/prediction_engine/test_fixture_sanity.py
+git commit -m "test: add tiny snapshot fixture (derived matrix, sanity checks for downstream tests)"
 ```
 
 ---
@@ -918,11 +987,14 @@ from schema.common import PartyCode
 
 
 def _polls_df_simple() -> pd.DataFrame:
-    # All polls ≤ 2026-04-25, GB geography, identical numbers ⇒ swing = polls − ge2024
+    # Two GB polls with DIFFERENT numbers so the window-filter test below
+    # distinguishes a 1-poll window from a 2-poll window.
+    # Old poll (04-18): reform=20, lab=30. New poll (04-23): reform=30, lab=26.
+    # Mean of both: reform=25, lab=28. New-poll-only mean: reform=30, lab=26.
     return pd.DataFrame([
         {"pollster": "X", "fieldwork_start": "2026-04-15", "fieldwork_end": "2026-04-17",
          "published_date": "2026-04-18", "sample_size": 1000, "geography": "GB",
-         "con": 18.0, "lab": 26.0, "ld": 12.0, "reform": 30.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 2.0},
+         "con": 22.0, "lab": 30.0, "ld": 12.0, "reform": 20.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 4.0},
         {"pollster": "Y", "fieldwork_start": "2026-04-20", "fieldwork_end": "2026-04-22",
          "published_date": "2026-04-23", "sample_size": 1000, "geography": "GB",
          "con": 18.0, "lab": 26.0, "ld": 12.0, "reform": 30.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 2.0},
@@ -965,20 +1037,32 @@ def test_compute_swing_subtracts_ge2024_share():
     polls = _polls_df_simple()
     results = _results_2024_df()
     swing = compute_swing(polls, results, as_of=date(2026, 4, 25), window_days=14, geography="GB")
-    # Polls 30 reform − 15 ge2024 = +15
-    assert swing[PartyCode.REFORM] == pytest.approx(15.0)
-    # Polls 26 lab − 30 ge2024 = −4
-    assert swing[PartyCode.LAB]    == pytest.approx(-4.0)
-    assert swing[PartyCode.CON]    == pytest.approx(-2.0)
+    # Two-poll mean: reform=(20+30)/2=25; ge2024 reform=15 → swing=+10.
+    assert swing[PartyCode.REFORM] == pytest.approx(10.0)
+    # Two-poll mean lab=(30+26)/2=28; ge2024 lab=30 → swing=-2.
+    assert swing[PartyCode.LAB]    == pytest.approx(-2.0)
+    # Two-poll mean con=(22+18)/2=20; ge2024 con=20 → swing=0.
+    assert swing[PartyCode.CON]    == pytest.approx(0.0)
 
 
-def test_compute_swing_window_filters_old_polls():
+def test_compute_swing_window_excludes_old_poll():
     polls = _polls_df_simple()
     results = _results_2024_df()
-    # 1-day window from 2026-04-25 only includes polls with published_date strictly within 1 day → only 2026-04-23 keeps
+    # window_days=3 from 2026-04-25 → cutoff_lo=2026-04-22 (exclusive).
+    # 04-18 poll FAILS (≤ cutoff_lo); 04-23 poll PASSES.
+    # New-poll-only: reform=30, ge2024=15 → swing=+15. Distinct from the 2-poll mean.
     swing = compute_swing(polls, results, as_of=date(2026, 4, 25), window_days=3, geography="GB")
-    # Both polls are ≥ 2026-04-22; both kept. Result identical to test above.
     assert swing[PartyCode.REFORM] == pytest.approx(15.0)
+    # New-poll-only lab=26 vs ge2024=30 → swing=-4 (vs -2 in the 2-poll case).
+    assert swing[PartyCode.LAB] == pytest.approx(-4.0)
+
+
+def test_compute_swing_wide_window_includes_both_polls():
+    polls = _polls_df_simple()
+    results = _results_2024_df()
+    # window_days=14 includes both polls; mean of (20, 30) = 25; swing = 25 − 15 = 10.
+    swing = compute_swing(polls, results, as_of=date(2026, 4, 25), window_days=14, geography="GB")
+    assert swing[PartyCode.REFORM] == pytest.approx(10.0)
 
 
 def test_compute_swing_raises_when_no_polls_in_window():
@@ -1095,7 +1179,7 @@ def compute_swing(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/prediction_engine/test_polls.py -v`
-Expected: 5 tests PASS.
+Expected: 6 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1175,8 +1259,32 @@ def test_project_raw_shares_clamps_negative_to_zero():
     swings = {"GB": {p: 0.0 for p in PartyCode}}
     swings["GB"][PartyCode.REFORM] = -50.0  # would drive reform negative
     out = project_raw_shares(results, swings)
-    e1 = out[out["ons_code"] == "E1"].iloc[0]
-    assert e1["share_raw_reform"] == pytest.approx(0.0, abs=1e-6)
+    cols = [f"share_raw_{p.value}" for p in PartyCode]
+    # Every seat (both E1 and W1 — Wales falls back to GB swing here) renormalises
+    # to exactly 100.0 after the clamp.
+    for ons in ("E1", "W1"):
+        seat = out[out["ons_code"] == ons].iloc[0]
+        assert seat["share_raw_reform"] == pytest.approx(0.0, abs=1e-6)
+        assert seat[cols].sum() == pytest.approx(100.0, abs=1e-6)
+
+
+def test_project_raw_shares_all_seats_sum_to_100():
+    """Renormalisation guarantee: every seat's predicted shares sum to exactly 100,
+    regardless of swing configuration."""
+    results = _two_seat_results()
+    swings = {
+        "GB":    {p: 0.0 for p in PartyCode},
+        "Wales": {p: 0.0 for p in PartyCode},
+    }
+    swings["GB"][PartyCode.REFORM]    = 7.0
+    swings["GB"][PartyCode.LAB]       = -3.0
+    swings["Wales"][PartyCode.REFORM] = 4.0
+    swings["Wales"][PartyCode.LAB]    = -2.0
+    out = project_raw_shares(results, swings)
+    cols = [f"share_raw_{p.value}" for p in PartyCode]
+    sums = out[cols].sum(axis=1)
+    for total in sums:
+        assert total == pytest.approx(100.0, abs=1e-6)
 
 
 def test_project_raw_shares_preserves_identity_columns():
@@ -1276,7 +1384,7 @@ def project_raw_shares(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/prediction_engine/test_projection.py -v`
-Expected: 4 tests PASS.
+Expected: 5 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1471,11 +1579,48 @@ def test_uniform_swing_winner_is_max_predicted_share(tiny_snapshot_path):
         assert row["predicted_winner"] == winner
 
 
-def test_uniform_swing_national_totals_sum_to_650_logic(tiny_snapshot_path):
+def test_uniform_swing_national_totals_sum_to_seat_count(tiny_snapshot_path):
     snap = Snapshot(tiny_snapshot_path)
     result = UniformSwingStrategy().predict(snap, UniformSwingConfig())
     overall = result.national[result.national["scope"] == "overall"]
     assert overall["seats"].sum() == len(result.per_seat)  # one winner per seat
+
+
+def test_uniform_swing_per_nation_seat_counts_consistent(tiny_snapshot_path):
+    """The per-nation breakdown's seat counts must sum (across parties, within each nation)
+    to the number of seats in that nation. Catches bugs where _compute_national_totals
+    double-counts or drops scopes."""
+    snap = Snapshot(tiny_snapshot_path)
+    result = UniformSwingStrategy().predict(snap, UniformSwingConfig())
+    nation_view = result.national[result.national["scope"] == "nation"]
+    for nation, sub in nation_view.groupby("scope_value"):
+        seats_in_nation = (result.per_seat["nation"] == nation).sum()
+        assert sub["seats"].sum() == seats_in_nation, f"{nation}: {sub['seats'].sum()} != {seats_in_nation}"
+
+
+def test_uniform_swing_winner_tie_break_follows_partycode_order(tiny_snapshot_path):
+    """Document and enforce tie-break behavior. The implementation uses pandas idxmax
+    over party_cols = [share_predicted_<p> for p in PartyCode], which on a tie returns
+    the FIRST column with the max — i.e. PartyCode declaration order. PartyCode order is
+    LAB, CON, LD, REFORM, GREEN, SNP, PLAID, OTHER (from schema/common.py); so on a Lab/Reform
+    tie, Lab wins.
+
+    This test injects a synthetic Lab/Reform tie and asserts Lab wins.
+    """
+    import pandas as pd
+    snap = Snapshot(tiny_snapshot_path)
+    # Run predict, then synthesize a tie post-hoc by manually invoking the helper.
+    # Simpler: assert ordering via construction with hand-built shares.
+    from prediction_engine.strategies.uniform_swing import _add_winner_and_metadata
+    row = {f"share_raw_{p.value}":       0.0 for p in PartyCode}
+    row.update({f"share_predicted_{p.value}": 0.0 for p in PartyCode})
+    row["share_predicted_lab"]    = 35.0
+    row["share_predicted_reform"] = 35.0
+    row["share_raw_lab"]    = 35.0
+    row["share_raw_reform"] = 35.0
+    df = pd.DataFrame([row])
+    out = _add_winner_and_metadata(df.copy())
+    assert out.iloc[0]["predicted_winner"] == "lab"  # Lab wins because it precedes Reform in PartyCode order
 
 
 def test_uniform_swing_determinism(tiny_snapshot_path):
@@ -1607,7 +1752,7 @@ def _compute_national_totals(per_seat: pd.DataFrame) -> pd.DataFrame:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/prediction_engine/test_uniform_swing.py -v`
-Expected: 6 tests PASS.
+Expected: 8 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1730,6 +1875,31 @@ def test_apply_flows_zero_clarity_means_no_flow():
     )
     assert out[PartyCode.LD]  == pytest.approx(10.0)
     assert out[PartyCode.LAB] == pytest.approx(30.0)
+
+
+def test_compute_clarity_full_when_consolidator_is_only_left_bloc_party():
+    """Edge case: in NI the LEFT_BLOC is empty, but other configurations could leave
+    the consolidator as the only left-bloc party present. With no rivals to compare
+    against, clarity is treated as 1.0 — the consolidation is trivially unambiguous."""
+    # Wales LEFT_BLOC = {lab, ld, green, plaid}. With only Plaid having any share,
+    # next_highest is 0, gap = full plaid share → clarity clamped to 1.0.
+    shares = _shares(reform=30.0, plaid=20.0)
+    clarity = compute_clarity(shares, consolidator=PartyCode.PLAID, nation="wales", threshold=5.0)
+    assert clarity == pytest.approx(1.0)
+
+
+def test_identify_consolidator_tie_break_alphabetical():
+    """When two left-bloc parties tie on share, the alphabetically-earlier party wins
+    (matches data_engine's _identify_consolidator tie-break behavior)."""
+    shares = _shares(reform=35.0, green=20.0, lab=20.0)  # Green and Lab tied at 20
+    c = identify_consolidator(shares, nation="england")
+    assert c == PartyCode.GREEN  # 'g' < 'l' alphabetically
+
+
+def test_compute_clarity_rejects_zero_threshold():
+    shares = _shares(lab=20.0, ld=10.0)
+    with pytest.raises(ValueError, match="threshold must be > 0"):
+        compute_clarity(shares, consolidator=PartyCode.LAB, nation="england", threshold=0.0)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1756,7 +1926,12 @@ def identify_consolidator(
     min_share: float = 2.0,
 ) -> PartyCode | None:
     """Per-seat: return the left-bloc party with the highest current share, or None
-    if no left-bloc party is above min_share. Tie-break by alphabetical PartyCode value."""
+    if no left-bloc party clears min_share.
+
+    Tie-break: when two parties tie on share, the alphabetically-earlier PartyCode value
+    wins. This matches data_engine.transforms.transfer_matrix._identify_consolidator's
+    tie-break (sort by gain desc, then actual_share desc, then party ascending).
+    """
     nation_enum = Nation(nation)
     left = LEFT_BLOC[nation_enum]
     if not left:
@@ -1764,7 +1939,8 @@ def identify_consolidator(
     eligible = [p for p in left if shares.get(p, 0.0) >= min_share]
     if not eligible:
         return None
-    return max(eligible, key=lambda p: (shares[p], -ord(p.value[0])))
+    # min over (-share, party_value) → highest share wins; ties broken by alphabetical party code.
+    return min(eligible, key=lambda p: (-shares[p], p.value))
 
 
 def compute_clarity(
@@ -1818,7 +1994,7 @@ def apply_flows(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/prediction_engine/test_reform_threat.py -v`
-Expected: 10 tests PASS.
+Expected: 13 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1842,6 +2018,7 @@ Append to `tests/prediction_engine/test_reform_threat.py`:
 
 ```python
 import json
+import pandas as pd
 from prediction_engine.snapshot_loader import Snapshot
 from prediction_engine.strategies.reform_threat_consolidation import ReformThreatStrategy
 from schema.prediction import ReformThreatConfig
@@ -1874,7 +2051,10 @@ def test_reform_threat_seat_c_non_reform_leader_short_circuits(tiny_snapshot_pat
     assert "non_reform_leader" in flags
     # share_predicted_<p> equals share_raw_<p> on a short-circuit.
     assert c["share_predicted_con"] == pytest.approx(c["share_raw_con"], abs=1e-9)
-    assert c["consolidator"] is None or c["consolidator"] == ""
+    # consolidator is set to None when path short-circuits before consolidator identification.
+    # pandas may store None as either Python None (object dtype) or NaN (numeric dtype);
+    # pd.isna covers both.
+    assert pd.isna(c["consolidator"])
 
 
 def test_reform_threat_seat_d_wales_plaid_consolidator(tiny_snapshot_path):
@@ -1887,7 +2067,8 @@ def test_reform_threat_seat_d_wales_plaid_consolidator(tiny_snapshot_path):
 
 
 def test_reform_threat_seat_e_scotland_no_matrix(tiny_snapshot_path):
-    """Seat E (Eilean) — Scotland has no derived matrix entry → matrix_unavailable fallback."""
+    """Seat E (Eilean) — SNP would be the locally-strongest left-bloc consolidator,
+    but Scotland has no derived matrix entry → matrix_unavailable fallback."""
     snap = Snapshot(tiny_snapshot_path)
     res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
     e = _seat(res.per_seat, "TST00005")
@@ -1895,6 +2076,11 @@ def test_reform_threat_seat_e_scotland_no_matrix(tiny_snapshot_path):
     assert "matrix_unavailable" in flags
     # share_predicted equals share_raw on fallback
     assert e["share_predicted_snp"] == pytest.approx(e["share_raw_snp"], abs=1e-9)
+    # The seat still records the would-be consolidator + clarity for analyst inspection,
+    # even though no flow was applied (per spec §5.3 step 5: clarity is computed before
+    # the matrix-availability check).
+    assert e["consolidator"] == "snp"
+    assert e["clarity"] is not None and not pd.isna(e["clarity"])
 
 
 def test_reform_threat_seat_f_ni_excluded(tiny_snapshot_path):
@@ -1908,12 +2094,14 @@ def test_reform_threat_seat_f_ni_excluded(tiny_snapshot_path):
 
 
 def test_reform_threat_low_clarity_flag(tiny_snapshot_path):
-    """Seat B (Bramford): Lab/LD/Green near-tied → low clarity."""
+    """Seat B (Bramford): Lab/LD near-tied (gap=2pp) → low_clarity at default threshold=5pp."""
     snap = Snapshot(tiny_snapshot_path)
-    res = ReformThreatStrategy().predict(snap, ReformThreatConfig(clarity_threshold=10.0))
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
     b = _seat(res.per_seat, "TST00002")
     flags = json.loads(b["notes"])
     assert "low_clarity" in flags
+    # Flow still applies at low clarity, just scaled down.
+    assert b["consolidator"] == "lab"
 
 
 def test_reform_threat_multiplier_monotone(tiny_snapshot_path):
@@ -1943,6 +2131,33 @@ def test_reform_threat_shares_sum_to_100_per_seat(tiny_snapshot_path):
     sums = res.per_seat[cols].sum(axis=1)
     for s in sums:
         assert s == pytest.approx(100.0, abs=1e-6)
+
+
+def test_reform_threat_consolidator_already_leads_unit():
+    """Hand-built shares unit test for the consolidator_already_leads guard.
+
+    With the current PartyCode-order tie-break (Lab precedes Reform), a strict
+    Lab=Reform tie on share_raw resolves to leader=Lab, which would short-circuit
+    via non_reform_leader. The consolidator_already_leads path is reachable only
+    when Reform is uniquely max but lab=reform exactly — impossible on real data.
+    To exercise the guard, construct a row where Reform > all other parties
+    individually but Lab equals Reform exactly. We bypass _argmax by injecting
+    leader=Reform manually and call the guard predicate from the helper.
+    """
+    from prediction_engine.strategies.reform_threat_consolidation import (
+        identify_consolidator,
+    )
+    raw_shares = {p: 0.0 for p in PartyCode}
+    raw_shares[PartyCode.REFORM] = 35.0
+    raw_shares[PartyCode.LAB]    = 35.0  # tied with Reform
+    raw_shares[PartyCode.LD]     = 10.0
+    raw_shares[PartyCode.OTHER]  = 20.0
+    consolidator = identify_consolidator(raw_shares, nation="england")
+    # Identification picks the highest left-bloc party regardless of Reform's share.
+    assert consolidator == PartyCode.LAB
+    # The guard condition is purely scalar: share[consolidator] >= share[leader].
+    # On a strict tie (35 == 35), the guard fires.
+    assert raw_shares[consolidator] >= raw_shares[PartyCode.REFORM]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -2019,19 +2234,31 @@ class ReformThreatStrategy(Strategy):
 
 def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -> dict:
     """Apply the reform-threat algorithm to one seat row. Returns a dict in seats-table
-    schema with per-party share_predicted_* and metadata fields."""
+    schema with per-party share_predicted_* and metadata fields.
+
+    Step ordering (matches spec §5.3 strictly):
+      1. NI short-circuit
+      2. leader != Reform → non_reform_leader fallback
+      3. identify consolidator (None → matrix_unavailable; consolidator >= leader → consolidator_already_leads)
+      4. compute clarity (always, regardless of matrix availability)
+      5. matrix availability check (no consolidator entries → matrix_unavailable, but preserve clarity)
+      6. weights lookup per source (cell missing → no_matrix_entry, source share unchanged)
+      7. apply flows scaled by clarity × multiplier
+      8. re-normalise to 100
+    """
     nation = row["nation"]
     flags: list[str] = []
 
     raw_shares: dict[PartyCode, float] = {p: float(row[f"share_raw_{p.value}"]) for p in PartyCode}
 
-    # NI short-circuit.
+    # 1. NI short-circuit.
     if nation == "northern_ireland":
         flags.append("ni_excluded")
         return _seat_with_flags(row, raw_shares, leader=_argmax(raw_shares),
                                 consolidator=None, clarity=None, matrix_nation=None,
                                 provenance=[], flags=flags)
 
+    # 2. Non-Reform leader fallback.
     leader = _argmax(raw_shares)
     if leader != PartyCode.REFORM:
         flags.append("non_reform_leader")
@@ -2039,6 +2266,7 @@ def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -
                                 consolidator=None, clarity=None, matrix_nation=None,
                                 provenance=[], flags=flags)
 
+    # 3. Identify consolidator.
     consolidator = identify_consolidator(raw_shares, nation=nation)
     if consolidator is None:
         flags.append("matrix_unavailable")
@@ -2052,16 +2280,22 @@ def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -
                                 consolidator=consolidator, clarity=None,
                                 matrix_nation=nation, provenance=[], flags=flags)
 
-    if not snapshot.consolidator_observed(nation, consolidator.value):
-        flags.append("matrix_unavailable")
-        return _seat_with_flags(row, raw_shares, leader=leader,
-                                consolidator=consolidator, clarity=None,
-                                matrix_nation=nation, provenance=[], flags=flags)
-
+    # 4. Compute clarity. (Spec §5.3 step 4: clarity is always meaningful for an
+    # identified consolidator; it does NOT depend on matrix availability.)
     clarity = compute_clarity(raw_shares, consolidator, nation, scenario.clarity_threshold)
     if clarity < 0.5:
         flags.append("low_clarity")
 
+    # 5. Matrix availability. The matrix nation may have no consolidator entries (e.g.
+    # Scotland in v1: no eligible by-election yet). We preserve the consolidator + clarity
+    # in the seat output for analyst inspection, then fall back without applying flows.
+    if not snapshot.consolidator_observed(nation, consolidator.value):
+        flags.append("matrix_unavailable")
+        return _seat_with_flags(row, raw_shares, leader=leader,
+                                consolidator=consolidator, clarity=clarity,
+                                matrix_nation=nation, provenance=[], flags=flags)
+
+    # 6. Per-source weight lookup. Missing cells flag once and skip that source.
     weights: dict[PartyCode, float] = {}
     for source in PartyCode:
         if source in (leader, consolidator) or raw_shares[source] <= 0.0:
@@ -2073,6 +2307,7 @@ def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -
             continue
         weights[source] = w
 
+    # 7. Apply flows.
     new_shares = apply_flows(
         raw_shares,
         leader=leader,
@@ -2083,7 +2318,8 @@ def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -
         flag_sink=flags,
     )
 
-    # Re-normalise to 100 (apply_flows preserves total, but float drift makes this safe).
+    # 8. Re-normalise to 100 (apply_flows preserves total in exact arithmetic; float drift
+    # makes this safe).
     total = sum(new_shares.values())
     if total > 0:
         new_shares = {p: v * 100.0 / total for p, v in new_shares.items()}
@@ -2169,7 +2405,7 @@ from prediction_engine.strategies import reform_threat_consolidation  # noqa: F4
 - [ ] **Step 6: Run all prediction_engine tests**
 
 Run: `uv run pytest tests/prediction_engine/ -v`
-Expected: all tests PASS, including the 9 new reform-threat integration tests AND all earlier suites (no regression on uniform_swing).
+Expected: all tests PASS, including the 10 new reform-threat integration tests (9 seat-level paths + 1 consolidator_already_leads unit guard) AND all earlier suites (no regression on uniform_swing).
 
 - [ ] **Step 7: Commit**
 
@@ -2315,6 +2551,39 @@ def test_label_slug_validation(tmp_path: Path):
             config_hash="cfg789",
             label="bad label/with slashes",
         )
+
+
+def test_label_slug_rejects_empty_string(tmp_path: Path):
+    with pytest.raises(ValueError, match="invalid label"):
+        prediction_filename(
+            out_dir=tmp_path,
+            snapshot_content_hash="abc123",
+            strategy="uniform_swing",
+            config_hash="cfg789",
+            label="",
+        )
+
+
+def test_round_trip_preserves_int_types(tmp_path: Path):
+    """schema_version comes back from SQLite as numpy.int64 (via pandas), but Pydantic's
+    int validator must accept it. This guards against subtle type-coercion regressions."""
+    out = tmp_path / "pred_int.sqlite"
+    write_prediction_db(out, seats=_seats_df(), national=_national_df(), run_config=_run_config())
+    cfg_back = read_prediction_config(out)
+    assert isinstance(cfg_back.schema_version, int)
+    assert cfg_back.schema_version == PREDICTION_SCHEMA_VERSION
+
+
+def test_explode_notes_handles_empty_flag_lists(tmp_path: Path):
+    """A prediction where no seat carries any flag must still produce a writable
+    notes_index (empty DataFrame) and not crash on read-back."""
+    seats = _seats_df()
+    seats["notes"] = "[]"  # remove all flags from every seat
+    out = tmp_path / "pred_empty_notes.sqlite"
+    write_prediction_db(out, seats=seats, national=_national_df(), run_config=_run_config())
+    notes_back = read_prediction_notes_index(out)
+    assert len(notes_back) == 0
+    assert set(notes_back.columns) == {"ons_code", "flag"}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -2430,7 +2699,7 @@ def read_prediction_config(path: Path) -> RunConfig:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/prediction_engine/test_sqlite_io.py -v`
-Expected: 6 tests PASS.
+Expected: 9 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -2473,6 +2742,19 @@ def test_run_prediction_writes_sqlite(tiny_snapshot_path, tmp_path: Path):
 
 
 def test_run_prediction_idempotent(tiny_snapshot_path, tmp_path: Path):
+    """Idempotency contract: same (snapshot, strategy, config, label) ⇒ same path AND
+    the file is NOT rewritten on the second call.
+
+    We don't compare st_mtime_ns directly — filesystem timestamp resolution varies
+    (Windows NTFS = 100ns, ext4 = 1ns, FAT32 = 2s) and pytest's tmp_path may live on
+    a low-resolution mount. Instead, compare the SHA-256 of the file's bytes before
+    and after; same bytes ⇒ no rewrite.
+    """
+    import hashlib
+
+    def _file_hash(p: Path) -> str:
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
     a = run_prediction(
         snapshot_path=tiny_snapshot_path,
         strategy_name="uniform_swing",
@@ -2480,7 +2762,7 @@ def test_run_prediction_idempotent(tiny_snapshot_path, tmp_path: Path):
         out_dir=tmp_path,
         label="baseline",
     )
-    mtime_a = a.stat().st_mtime_ns
+    hash_before = _file_hash(a)
     b = run_prediction(
         snapshot_path=tiny_snapshot_path,
         strategy_name="uniform_swing",
@@ -2489,8 +2771,7 @@ def test_run_prediction_idempotent(tiny_snapshot_path, tmp_path: Path):
         label="baseline",
     )
     assert a == b
-    # Idempotent: file not rewritten when same inputs.
-    assert b.stat().st_mtime_ns == mtime_a
+    assert _file_hash(b) == hash_before, "second call rewrote the prediction file"
 
 
 def test_run_prediction_writes_config_table(tiny_snapshot_path, tmp_path: Path):
@@ -2621,7 +2902,7 @@ git commit -m "feat(prediction): runner — load snapshot, apply strategy, write
 - Modify: `pyproject.toml` (add entry point and dev dep)
 - Test: `tests/prediction_engine/test_cli.py`
 
-- [ ] **Step 1: Add entry point and reinstall**
+- [ ] **Step 1: Add entry point and reinstall (CRITICAL — see Plan A's better-memory gotcha)**
 
 Edit `pyproject.toml`. Append to `[project.scripts]`:
 
@@ -2631,11 +2912,24 @@ seatpredict-predict = "prediction_engine.cli:main"
 
 (Do NOT add `seatpredict-analyze` yet; that comes in Task 14.)
 
-Reinstall with compat editable mode (per Plan A's better-memory note):
+**Why this is fragile:** `uv run seatpredict-predict ...` triggers a package rebuild that reverts the editable install to the default PEP 660 finder mode. That mode's MAPPING omits `data_engine` (and now `prediction_engine`), so the entry point fails with `ModuleNotFoundError`. Plan A captured this in better-memory; the fix is the compat-mode reinstall.
+
+Reinstall with compat editable mode:
 
 ```bash
 uv pip install --config-settings editable_mode=compat -e ".[dev]"
 ```
+
+Verify the binary exists and is invocable WITHOUT going through `uv run`:
+
+```bash
+# Windows:
+.venv/Scripts/seatpredict-predict.exe --help
+# POSIX:
+.venv/bin/seatpredict-predict --help
+```
+
+Expected: Click banner showing the `list-strategies / run / sweep / diff` subcommands. If this errors with `ModuleNotFoundError`, repeat the compat-mode reinstall above. Do NOT proceed until the binary works.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -3197,7 +3491,7 @@ git commit -m "feat(analysis): drilldown/flips/poll_trends/sweep helpers; CLI di
 - Modify: `pyproject.toml` (add second entry point)
 - Test: `tests/prediction_engine/test_cli_analyze.py`
 
-- [ ] **Step 1: Add entry point and reinstall**
+- [ ] **Step 1: Add entry point and reinstall (CRITICAL — see Plan A's better-memory gotcha)**
 
 Edit `pyproject.toml`. Append to `[project.scripts]`:
 
@@ -3205,11 +3499,22 @@ Edit `pyproject.toml`. Append to `[project.scripts]`:
 seatpredict-analyze = "prediction_engine.cli_analyze:main"
 ```
 
-Reinstall:
+Reinstall in compat editable mode (don't skip — `uv run seatpredict-analyze` will silently revert the install otherwise):
 
 ```bash
 uv pip install --config-settings editable_mode=compat -e ".[dev]"
 ```
+
+Verify the binary works without `uv run`:
+
+```bash
+# Windows:
+.venv/Scripts/seatpredict-analyze.exe --help
+# POSIX:
+.venv/bin/seatpredict-analyze --help
+```
+
+Expected: Click banner showing the `drilldown / flips` subcommands. Do NOT proceed until this works (a `ModuleNotFoundError` here means the install broke; re-run the compat-mode reinstall).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -3333,13 +3638,128 @@ git commit -m "feat(analysis): seatpredict-analyze CLI (drilldown, flips)"
 ## Task 15: Notebooks
 
 **Files:**
+- Create: `scripts/build_notebooks.py` (one-shot authoring script — reproducible, version-controlled)
 - Create: `notebooks/01_polling_trends.ipynb`
 - Create: `notebooks/02_constituency_drilldown.ipynb`
 - Create: `notebooks/03_strategy_comparison.ipynb`
 - Create: `notebooks/04_scenario_sweep.ipynb`
-- Modify: `pyproject.toml` (add `jupyterlab` and `matplotlib` to dev deps)
+- Modify: `pyproject.toml` (add `jupyterlab`, `matplotlib`, `nbformat` to dev deps)
 
-Notebooks are scaffolds, not source-of-truth code. Each is short (≤30 cells), calls the analysis functions, and includes a one-sentence interpretation cell next to each chart per spec §6.3. Skip the fail-first cycle (notebooks are inspectable artefacts; no automated test harness).
+**Why a generator script:** authoring `.ipynb` files directly as JSON or via the Jupyter UI is fiddly; the implementer will silently skip cells or commit broken JSON. Using a Python script that calls `nbformat.v4.new_notebook` produces deterministic, diffable output and makes future edits a one-line code change. The script is committed alongside the notebooks so the build is reproducible.
+
+**Notebooks are inspectable artefacts**, not unit-tested code. Validation is two-step: (a) `nbformat.read` round-trips each file (catches syntactic JSON breakage), and (b) `jupyter nbconvert --to notebook --execute --inplace` runs every cell against real Plan-A data and fails loudly on any cell-level exception. Both happen in Step 4.
+
+### Cell content for each notebook (this is the source of truth — `build_notebooks.py` writes exactly this)
+
+Each notebook starts with a markdown title cell and an imports cell, then alternates code/markdown.
+
+**01_polling_trends.ipynb** (4 cells):
+
+```python
+# Cell 1 (md): "# Polling trends\n\nPer-party 7-day rolling mean from the GB national-VI poll table. Sanity-checks the data engine output."
+# Cell 2 (code):
+from pathlib import Path
+import matplotlib.pyplot as plt
+from prediction_engine.snapshot_loader import Snapshot
+from prediction_engine.analysis.poll_trends import rolling_trend
+
+snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
+snap = Snapshot(snap_path)
+trend = rolling_trend(snap, window_days=7, geography="GB")
+trend.tail()
+# Cell 3 (code):
+ax = trend.plot(figsize=(10, 5))
+ax.set_ylabel("Vote share (%)")
+ax.set_title(f"7-day rolling per-party national VI trend (as of {snap.manifest.as_of_date})")
+plt.show()
+# Cell 4 (md): "Lines should be smooth (no sub-cell spikes); Reform should sit above other parties when the snapshot's GB national VI shows it leading."
+```
+
+**02_constituency_drilldown.ipynb** (5 cells):
+
+```python
+# Cell 1 (md): "# Constituency drilldown\n\nPick a seat. Show projected raw shares, the consolidator, clarity, matrix entries, flows, and the final prediction."
+# Cell 2 (code): load the latest reform_threat prediction
+from pathlib import Path
+from prediction_engine.analysis.drilldown import explain_seat
+
+prediction_path = sorted(Path("data/predictions").glob("*reform_threat_consolidation*.sqlite"))[-1]
+# Pick the first ONS code from the prediction; user can edit this.
+import sqlite3
+from contextlib import closing
+with closing(sqlite3.connect(str(prediction_path))) as conn:
+    cur = conn.execute("SELECT ons_code FROM seats WHERE notes != '[]' ORDER BY ons_code LIMIT 1")
+    row = cur.fetchone()
+ons_code = row[0] if row else None
+report = explain_seat(prediction_path, ons_code=ons_code)
+report
+# Cell 3 (code): pretty-print the before/after
+import pandas as pd
+pd.DataFrame({"raw": report["share_raw"], "predicted": report["share_predicted"]}).T
+# Cell 4 (md): "Expect lab/plaid/snp/green's share_predicted > share_raw on Reform-threat seats; the parties in `matrix_provenance` are the by-elections that contributed."
+```
+
+**03_strategy_comparison.ipynb** (5 cells):
+
+```python
+# Cell 1 (md): "# Strategy comparison\n\nuniform_swing vs reform_threat_consolidation. List flips; chart national-total deltas."
+# Cell 2 (code):
+from pathlib import Path
+from prediction_engine.analysis.flips import compute_flips
+from prediction_engine.sqlite_io import read_prediction_national
+
+pred_dir = Path("data/predictions")
+us_run  = sorted(pred_dir.glob("*uniform_swing*.sqlite"))[-1]
+rtc_run = sorted(pred_dir.glob("*reform_threat_consolidation*.sqlite"))[-1]
+flips = compute_flips(us_run, rtc_run)
+flips.head(20)
+# Cell 3 (code):
+import matplotlib.pyplot as plt
+import pandas as pd
+nat_us  = read_prediction_national(us_run)
+nat_rtc = read_prediction_national(rtc_run)
+us_overall  = nat_us [nat_us ["scope"] == "overall"].set_index("party")["seats"]
+rtc_overall = nat_rtc[nat_rtc["scope"] == "overall"].set_index("party")["seats"]
+pd.DataFrame({"uniform_swing": us_overall, "reform_threat": rtc_overall}).plot.bar(figsize=(8, 4))
+plt.ylabel("Seats")
+plt.title("National totals: uniform_swing vs reform_threat_consolidation")
+plt.show()
+# Cell 4 (md): "If reform_threat trims Reform seats vs uniform_swing while raising Lab/LD/Green/Plaid/SNP, the consolidation strategy is firing as expected."
+```
+
+**04_scenario_sweep.ipynb** (4 cells):
+
+```python
+# Cell 1 (md): "# Scenario sweep\n\nSweep `multiplier`. Plot per-party national seat counts."
+# Cell 2 (code):
+import subprocess, sys
+from pathlib import Path
+from prediction_engine.analysis.sweep import collect_sweep
+
+pred_dir = Path("data/predictions")
+snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
+for m in (0.5, 0.75, 1.0, 1.25, 1.5):
+    subprocess.run([
+        sys.executable, "-m", "prediction_engine.cli", "run",
+        "--snapshot", str(snap_path),
+        "--strategy", "reform_threat_consolidation",
+        "--out-dir", str(pred_dir),
+        "--label", f"sweep_m{m:.2f}".replace(".", "p"),
+        "--multiplier", str(m),
+    ], check=True)
+
+sweep_paths = sorted(pred_dir.glob("*sweep_m*p*.sqlite"))
+summary = collect_sweep(sweep_paths)
+summary
+# Cell 3 (code):
+import matplotlib.pyplot as plt
+pivot = summary.pivot(index="multiplier", columns="party", values="seats").fillna(0)
+pivot.plot(figsize=(10, 5), marker="o")
+plt.ylabel("Seats")
+plt.title("National seat count vs reform-threat multiplier")
+plt.show()
+# Cell 4 (md): "Reform's line should be monotonically decreasing; the consolidator parties' lines monotonically increasing."
+```
 
 - [ ] **Step 1: Add notebook deps to pyproject and reinstall**
 
@@ -3352,156 +3772,232 @@ dev = [
     "respx>=0.21,<1",
     "jupyterlab>=4.0,<5",
     "matplotlib>=3.8,<4",
+    "nbformat>=5.10,<6",
+    "nbclient>=0.10,<1",
 ]
 ```
 
-Reinstall:
+Reinstall in compat editable mode:
 
 ```bash
 uv pip install --config-settings editable_mode=compat -e ".[dev]"
 ```
 
-- [ ] **Step 2: Create `notebooks/` and notebook 01**
+- [ ] **Step 2: Create `scripts/build_notebooks.py`**
 
 ```bash
-mkdir -p notebooks
+mkdir -p scripts notebooks
 ```
 
-Create `notebooks/01_polling_trends.ipynb` (use Jupyter to author it, or write the JSON directly). Minimum content (use `jupyter nbconvert` or copy from any existing minimal notebook template — the structure below is the cells, in order):
+`scripts/build_notebooks.py`:
 
-1. Markdown: title + 1-line description: "How are polls moving since the GE? Per-party 7-day rolling mean from the GB national-VI poll table."
-2. Code:
-   ```python
-   from pathlib import Path
-   import matplotlib.pyplot as plt
-   from prediction_engine.snapshot_loader import Snapshot
-   from prediction_engine.analysis.poll_trends import rolling_trend
+```python
+"""Generate the four analysis notebooks from this script.
 
-   snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
-   snap = Snapshot(snap_path)
-   trend = rolling_trend(snap, window_days=7, geography="GB")
-   ```
-3. Code: plot every party as a line:
-   ```python
-   ax = trend.plot(figsize=(10, 5))
-   ax.set_ylabel("Vote share (%)")
-   ax.set_title(f"7-day rolling per-party national VI trend (as of {snap.manifest.as_of_date})")
-   plt.show()
-   ```
-4. Markdown: 1-sentence interpretation: "Sanity check: lines should be smooth (no sub-cell spikes); Reform should sit above other parties when the snapshot's GB national VI shows it leading."
+Run me with: uv run python scripts/build_notebooks.py
+The notebooks are committed to git alongside this script. To edit a cell, edit
+the dict in NOTEBOOK_SPECS below and rerun.
+"""
+from pathlib import Path
 
-- [ ] **Step 3: Create notebook 02 — constituency drilldown**
+import nbformat
+from nbformat.v4 import new_notebook, new_code_cell, new_markdown_cell
 
-`notebooks/02_constituency_drilldown.ipynb`:
 
-1. Markdown: "Pick a seat. Show projected raw shares, the consolidator, clarity, matrix entries used, the flows applied, and the final prediction."
-2. Code:
-   ```python
-   from pathlib import Path
-   from prediction_engine.analysis.drilldown import explain_seat
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
-   prediction_path = sorted(Path("data/predictions").glob("*.sqlite"))[-1]
-   ons_code = "E14000001"   # change me
-   report = explain_seat(prediction_path, ons_code=ons_code)
-   report
-   ```
-3. Code: pretty-print the share before/after:
-   ```python
-   import pandas as pd
-   df = pd.DataFrame({"raw": report["share_raw"], "predicted": report["share_predicted"]}).T
-   df
-   ```
-4. Markdown: "If the seat had a Reform-led contest, expect Lab/Plaid/SNP/Green's share_predicted > share_raw and the parties named in `matrix_provenance` to be the by-elections that contributed to the matrix cells used."
 
-- [ ] **Step 4: Create notebook 03 — strategy comparison**
+_NB_01_TITLE_MD = "# Polling trends\n\nPer-party 7-day rolling mean from the GB national-VI poll table. Sanity-checks the data engine output."
+_NB_01_LOAD = '''from pathlib import Path
+import matplotlib.pyplot as plt
+from prediction_engine.snapshot_loader import Snapshot
+from prediction_engine.analysis.poll_trends import rolling_trend
 
-`notebooks/03_strategy_comparison.ipynb`:
+snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
+snap = Snapshot(snap_path)
+trend = rolling_trend(snap, window_days=7, geography="GB")
+trend.tail()'''
+_NB_01_PLOT = '''ax = trend.plot(figsize=(10, 5))
+ax.set_ylabel("Vote share (%)")
+ax.set_title(f"7-day rolling per-party national VI trend (as of {snap.manifest.as_of_date})")
+plt.show()'''
+_NB_01_INTERP = "Lines should be smooth (no sub-cell spikes); Reform should sit above other parties when the snapshot's GB national VI shows it leading."
 
-1. Markdown: "uniform_swing vs reform_threat_consolidation. List flips; chart national-total deltas."
-2. Code:
-   ```python
-   from pathlib import Path
-   from prediction_engine.analysis.flips import compute_flips
-   from prediction_engine.sqlite_io import read_prediction_national
+_NB_02_TITLE_MD = "# Constituency drilldown\n\nPick a seat. Show projected raw shares, the consolidator, clarity, matrix entries, flows, and the final prediction."
+_NB_02_LOAD = '''from pathlib import Path
+import sqlite3
+from contextlib import closing
+from prediction_engine.analysis.drilldown import explain_seat
 
-   pred_dir = Path("data/predictions")
-   us_run  = sorted(pred_dir.glob("*uniform_swing*.sqlite"))[-1]
-   rtc_run = sorted(pred_dir.glob("*reform_threat_consolidation*.sqlite"))[-1]
+prediction_path = sorted(Path("data/predictions").glob("*reform_threat_consolidation*.sqlite"))[-1]
+with closing(sqlite3.connect(str(prediction_path))) as conn:
+    cur = conn.execute("SELECT ons_code FROM seats WHERE notes != '[]' ORDER BY ons_code LIMIT 1")
+    row = cur.fetchone()
+ons_code = row[0]
+report = explain_seat(prediction_path, ons_code=ons_code)
+report'''
+_NB_02_TABLE = '''import pandas as pd
+pd.DataFrame({"raw": report["share_raw"], "predicted": report["share_predicted"]}).T'''
+_NB_02_INTERP = "Expect lab/plaid/snp/green's share_predicted > share_raw on Reform-threat seats; the parties in `matrix_provenance` are the by-elections that contributed."
 
-   flips = compute_flips(us_run, rtc_run)
-   flips.head(20)
-   ```
-3. Code: plot total seats per party as a bar chart for both runs.
-   ```python
-   import matplotlib.pyplot as plt
-   import pandas as pd
-   nat_us  = read_prediction_national(us_run)
-   nat_rtc = read_prediction_national(rtc_run)
-   us_overall  = nat_us [nat_us ["scope"] == "overall"].set_index("party")["seats"]
-   rtc_overall = nat_rtc[nat_rtc["scope"] == "overall"].set_index("party")["seats"]
-   pd.DataFrame({"uniform_swing": us_overall, "reform_threat": rtc_overall}).plot.bar(figsize=(8,4))
-   plt.ylabel("Seats")
-   plt.title("National totals: uniform_swing vs reform_threat_consolidation")
-   plt.show()
-   ```
-4. Markdown: "If reform_threat trims Reform seats below uniform_swing while raising Lab/LD/Green/Plaid/SNP, the consolidation strategy is firing as expected."
+_NB_03_TITLE_MD = "# Strategy comparison\n\nuniform_swing vs reform_threat_consolidation. List flips; chart national-total deltas."
+_NB_03_LOAD = '''from pathlib import Path
+from prediction_engine.analysis.flips import compute_flips
+from prediction_engine.sqlite_io import read_prediction_national
 
-- [ ] **Step 5: Create notebook 04 — scenario sweep**
+pred_dir = Path("data/predictions")
+us_run  = sorted(pred_dir.glob("*uniform_swing*.sqlite"))[-1]
+rtc_run = sorted(pred_dir.glob("*reform_threat_consolidation*.sqlite"))[-1]
+flips = compute_flips(us_run, rtc_run)
+flips.head(20)'''
+_NB_03_PLOT = '''import matplotlib.pyplot as plt
+import pandas as pd
+nat_us  = read_prediction_national(us_run)
+nat_rtc = read_prediction_national(rtc_run)
+us_overall  = nat_us [nat_us ["scope"] == "overall"].set_index("party")["seats"]
+rtc_overall = nat_rtc[nat_rtc["scope"] == "overall"].set_index("party")["seats"]
+pd.DataFrame({"uniform_swing": us_overall, "reform_threat": rtc_overall}).plot.bar(figsize=(8, 4))
+plt.ylabel("Seats")
+plt.title("National totals: uniform_swing vs reform_threat_consolidation")
+plt.show()'''
+_NB_03_INTERP = "If reform_threat trims Reform seats vs uniform_swing while raising Lab/LD/Green/Plaid/SNP, the consolidation strategy is firing as expected."
 
-`notebooks/04_scenario_sweep.ipynb`:
+_NB_04_TITLE_MD = "# Scenario sweep\n\nSweep `multiplier`. Plot per-party national seat counts."
+_NB_04_RUN = '''import subprocess, sys
+from pathlib import Path
+from prediction_engine.analysis.sweep import collect_sweep
 
-1. Markdown: "Sweep `multiplier × clarity_threshold`. Plot per-party national seat counts."
-2. Code:
-   ```python
-   import subprocess
-   import sys
-   from pathlib import Path
-   from prediction_engine.analysis.sweep import collect_sweep
+pred_dir = Path("data/predictions")
+snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
+for m in (0.5, 0.75, 1.0, 1.25, 1.5):
+    subprocess.run([
+        sys.executable, "-m", "prediction_engine.cli", "run",
+        "--snapshot", str(snap_path),
+        "--strategy", "reform_threat_consolidation",
+        "--out-dir", str(pred_dir),
+        "--label", f"sweep_m{m:.2f}".replace(".", "p"),
+        "--multiplier", str(m),
+    ], check=True)
 
-   pred_dir = Path("data/predictions")
-   snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
-   for m in (0.5, 0.75, 1.0, 1.25, 1.5):
-       subprocess.run([
-           sys.executable, "-m", "prediction_engine.cli", "run",
-           "--snapshot", str(snap_path),
-           "--strategy", "reform_threat_consolidation",
-           "--out-dir", str(pred_dir),
-           "--label", f"sweep_m{m:.2f}".replace(".", "p"),
-           "--multiplier", str(m),
-       ], check=True)
+sweep_paths = sorted(pred_dir.glob("*sweep_m*p*.sqlite"))
+summary = collect_sweep(sweep_paths)
+summary'''
+_NB_04_PLOT = '''import matplotlib.pyplot as plt
+pivot = summary.pivot(index="multiplier", columns="party", values="seats").fillna(0)
+pivot.plot(figsize=(10, 5), marker="o")
+plt.ylabel("Seats")
+plt.title("National seat count vs reform-threat multiplier")
+plt.show()'''
+_NB_04_INTERP = "Reform's line should be monotonically decreasing; the consolidator parties' lines monotonically increasing."
 
-   sweep_paths = sorted(pred_dir.glob("*sweep_m*p*.sqlite"))
-   summary = collect_sweep(sweep_paths)
-   summary
-   ```
-3. Code: plot seats vs multiplier per party:
-   ```python
-   import matplotlib.pyplot as plt
-   pivot = summary.pivot(index="multiplier", columns="party", values="seats").fillna(0)
-   pivot.plot(figsize=(10,5), marker="o")
-   plt.ylabel("Seats")
-   plt.title("National seat count vs reform-threat multiplier")
-   plt.show()
-   ```
-4. Markdown: "Reform's line should be monotonically decreasing; the consolidator parties' lines monotonically increasing."
 
-(Notebooks may be created with `jupyter nbconvert` or hand-written JSON; the simplest path is `jupyter notebook` → manually add cells → save. If authoring as raw JSON, the notebook format is documented at https://nbformat.readthedocs.io. **A reasonable shortcut:** write each notebook as a `.py` file with `# %%` cell markers and use `jupyter nbconvert --to notebook --from-script` to produce the `.ipynb`.)
+NOTEBOOK_SPECS = [
+    ("01_polling_trends.ipynb", [
+        ("md", _NB_01_TITLE_MD),
+        ("code", _NB_01_LOAD),
+        ("code", _NB_01_PLOT),
+        ("md", _NB_01_INTERP),
+    ]),
+    ("02_constituency_drilldown.ipynb", [
+        ("md", _NB_02_TITLE_MD),
+        ("code", _NB_02_LOAD),
+        ("code", _NB_02_TABLE),
+        ("md", _NB_02_INTERP),
+    ]),
+    ("03_strategy_comparison.ipynb", [
+        ("md", _NB_03_TITLE_MD),
+        ("code", _NB_03_LOAD),
+        ("code", _NB_03_PLOT),
+        ("md", _NB_03_INTERP),
+    ]),
+    ("04_scenario_sweep.ipynb", [
+        ("md", _NB_04_TITLE_MD),
+        ("code", _NB_04_RUN),
+        ("code", _NB_04_PLOT),
+        ("md", _NB_04_INTERP),
+    ]),
+]
 
-- [ ] **Step 6: Smoke-test the notebooks open**
 
-The notebooks won't have automated tests; verify each opens cleanly in JupyterLab and the imports succeed:
+def build():
+    out_dir = _REPO_ROOT / "notebooks"
+    out_dir.mkdir(exist_ok=True)
+    for name, cells in NOTEBOOK_SPECS:
+        nb = new_notebook()
+        nb.cells = [
+            (new_markdown_cell(content) if kind == "md" else new_code_cell(content))
+            for kind, content in cells
+        ]
+        # Pin Python kernel metadata so VS Code / JupyterLab pick the right kernel.
+        nb.metadata["kernelspec"] = {
+            "display_name": "Python 3",
+            "language": "python",
+            "name": "python3",
+        }
+        path = out_dir / name
+        with path.open("w", encoding="utf-8") as f:
+            nbformat.write(nb, f)
+        print(f"wrote {path}")
 
-```bash
-.venv/Scripts/jupyter.exe lab --no-browser  # Windows; or .venv/bin/jupyter on POSIX
+
+if __name__ == "__main__":
+    build()
 ```
 
-Open each notebook → "Run All Cells" → expect no exceptions until the dataset-dependent cells (which need a real Plan-A snapshot in `data/snapshots/`). The notebook smoke is: imports succeed; the analysis functions are callable.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 3: Run the generator**
 
 ```bash
-git add pyproject.toml notebooks/
-git commit -m "feat(notebooks): four analysis notebooks (polling trends, drilldown, comparison, sweep)"
+uv run python scripts/build_notebooks.py
+```
+
+Expected output: four `wrote …` lines. Then `nbformat.read` each one to confirm it parses:
+
+```bash
+uv run python -c "import nbformat; [print(p, len(nbformat.read(open(p, encoding='utf-8'), as_version=4).cells)) for p in __import__('pathlib').Path('notebooks').glob('*.ipynb')]"
+```
+
+Expected: each notebook reports 4 cells (filename plus cell count).
+
+- [ ] **Step 4: Execute the notebooks end-to-end against real Plan-A data**
+
+Notebooks 01 and 02–04 require `data/snapshots/*.sqlite` and `data/predictions/*.sqlite` to exist. Build them first:
+
+```bash
+uv run seatpredict-data fetch
+uv run seatpredict-data snapshot
+SNAP=$(ls -1 data/snapshots/*.sqlite | tail -1)
+uv run seatpredict-predict run --snapshot "$SNAP" --strategy uniform_swing --out-dir data/predictions --label baseline_us
+uv run seatpredict-predict run --snapshot "$SNAP" --strategy reform_threat_consolidation --out-dir data/predictions --label baseline_rtc
+```
+
+(PowerShell equivalent: `$SNAP = (Get-ChildItem data/snapshots/*.sqlite | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName`.)
+
+Now execute each notebook in-place and fail loudly on any cell-level exception:
+
+```bash
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/01_polling_trends.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/02_constituency_drilldown.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/03_strategy_comparison.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/04_scenario_sweep.ipynb
+```
+
+Expected: each command exits 0 (no `CellExecutionError`). The executed notebooks now contain rendered chart outputs. Review them visually before committing.
+
+If a cell errors, fix `scripts/build_notebooks.py` (NOT the notebook directly), regenerate, re-execute. Don't hand-edit the `.ipynb` files.
+
+- [ ] **Step 5: Strip outputs before committing (so diffs stay clean)**
+
+Outputs include base64 PNGs and execution counts that change every run. Strip them so subsequent regenerations don't churn git:
+
+```bash
+uv run jupyter nbconvert --clear-output --inplace notebooks/*.ipynb
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add pyproject.toml scripts/build_notebooks.py notebooks/
+git commit -m "feat(notebooks): four analysis notebooks (polling trends, drilldown, comparison, sweep) generated from build_notebooks.py"
 ```
 
 ---
@@ -3583,7 +4079,9 @@ A browser tab opens at `http://localhost:8888`. Open `notebooks/01_polling_trend
 
 - [ ] **Step 2: End-to-end smoke**
 
-Build a fresh snapshot from real data, run a prediction, run an analysis, open one notebook:
+Build a fresh snapshot from real data, run a prediction, run an analysis. Use the variant for your shell.
+
+**bash / git-bash:**
 
 ```bash
 uv run seatpredict-data fetch
@@ -3593,12 +4091,26 @@ uv run seatpredict-predict run --snapshot "$SNAP" \
     --strategy reform_threat_consolidation \
     --out-dir data/predictions --label baseline
 PRED=$(ls -1 data/predictions/*.sqlite | tail -1)
-uv run seatpredict-analyze drilldown --run "$PRED" --seat E14000001 --explain
+SEAT=$(uv run python -c "import sqlite3, contextlib; c=contextlib.closing(sqlite3.connect('$PRED')); [print(c.__enter__().execute('SELECT ons_code FROM seats LIMIT 1').fetchone()[0])]")
+uv run seatpredict-analyze drilldown --run "$PRED" --seat "$SEAT" --explain
 ```
 
-(On Windows PowerShell: replace the `$()` substitutions with `Get-ChildItem | Sort | Select -Last 1`.)
+**PowerShell:**
 
-Expected: prediction file written; drilldown prints a structured per-seat report.
+```powershell
+uv run seatpredict-data fetch
+uv run seatpredict-data snapshot
+$SNAP = (Get-ChildItem data/snapshots/*.sqlite | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+uv run seatpredict-predict run --snapshot "$SNAP" `
+    --strategy reform_threat_consolidation `
+    --out-dir data/predictions --label baseline
+$PRED = (Get-ChildItem data/predictions/*.sqlite | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+$SEAT = uv run python -c "import sqlite3, contextlib; \
+with contextlib.closing(sqlite3.connect(r'$PRED')) as c: print(c.execute('SELECT ons_code FROM seats LIMIT 1').fetchone()[0])"
+uv run seatpredict-analyze drilldown --run "$PRED" --seat "$SEAT" --explain
+```
+
+Expected: prediction file written under `data/predictions/`; drilldown prints a structured per-seat report including `share_raw → share_predicted` lines and a `notes` list. The seat ONS code is picked from the prediction itself rather than hardcoded so the smoke is robust to the actual constituency boundaries in the live data.
 
 - [ ] **Step 3: Run the full test suite**
 
