@@ -7,9 +7,6 @@ from schema.common import PartyCode
 logger = logging.getLogger(__name__)
 
 
-_PARTY_VALUES: list[str] = [p.value for p in PartyCode]
-
-
 def ge2024_national_share(
     results_2024: pd.DataFrame,
     nation_filter: str | None = None,
@@ -20,7 +17,7 @@ def ge2024_national_share(
     """
     df = results_2024
     if nation_filter is not None:
-        df = df[df["nation"] == nation_filter]
+        df = df.loc[df["nation"] == nation_filter]
     if df.empty:
         raise ValueError(f"no results for nation_filter={nation_filter}")
 
@@ -29,12 +26,9 @@ def ge2024_national_share(
     if total <= 0:
         raise ValueError("results_2024 votes sum to 0")
 
-    shares: dict[PartyCode, float] = {}
-    for p in PartyCode:
-        row = by_party[by_party["party"] == p.value]
-        v = float(row["votes"].iloc[0]) if not row.empty else 0.0
-        shares[p] = (v / total) * 100.0
-    return shares
+    # Pivot to party→votes dict in one pass; missing parties default to 0.
+    votes_by_party: dict[str, float] = dict(zip(by_party["party"], by_party["votes"].astype(float)))
+    return {p: (votes_by_party.get(p.value, 0.0) / total) * 100.0 for p in PartyCode}
 
 
 _GEO_TO_NATION_FILTER: dict[str, str | None] = {
