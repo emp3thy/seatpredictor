@@ -75,4 +75,4 @@ def project_raw_shares(
         list(wide["nation"].unique()),
     )
 
-    return wide[keep].sort_values("ons_code").reset_index(drop=True)
+    return wide.loc[:, keep].sort_values(by="ons_code").reset_index(drop=True)
