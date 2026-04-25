@@ -1,0 +1,38 @@
+[project]
+name = "seatpredictor"
+version = "0.0.1"
+description = "UK Westminster seat predictor with tactical-consolidation modelling"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pandas>=2.2,<3",
+    "sqlalchemy>=2.0,<3",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=5.1,<6",
+    "httpx>=0.27,<1",
+    "pyyaml>=6.0,<7",
+    "click>=8.1,<9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "respx>=0.21,<1",
+]
+
+[project.scripts]
+seatpredict-data = "data_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["schema*", "data_engine*"]
+exclude = ["tests*", "data*", "docs*", "notebooks*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
