@@ -4,7 +4,6 @@ from pathlib import Path
 import click
 
 from prediction_engine.runner import run_prediction
-from prediction_engine.sqlite_io import read_prediction_seats
 from prediction_engine.strategies.base import STRATEGY_REGISTRY
 from prediction_engine import strategies as _strategies  # noqa: F401  populates registry
 from schema.prediction import ReformThreatConfig, UniformSwingConfig
@@ -117,18 +116,11 @@ def sweep_cmd(
 @click.argument("run_a", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("run_b", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def diff_cmd(run_a: Path, run_b: Path) -> None:
-    seats_a = read_prediction_seats(run_a).set_index("ons_code")
-    seats_b = read_prediction_seats(run_b).set_index("ons_code")
-    common = seats_a.index.intersection(seats_b.index)
-    flipped: list[tuple[str, str, str, str]] = []
-    for ons in sorted(common):
-        wa = seats_a.loc[ons, "predicted_winner"]
-        wb = seats_b.loc[ons, "predicted_winner"]
-        if wa != wb:
-            flipped.append((ons, seats_a.loc[ons, "constituency_name"], wa, wb))
-    if not flipped:
+    from prediction_engine.analysis.flips import compute_flips
+    flips = compute_flips(run_a, run_b)
+    if flips.empty:
         click.echo("no flips between the two runs")
         return
-    click.echo(f"{len(flipped)} flips between {run_a.name} and {run_b.name}:")
-    for ons, name, wa, wb in flipped:
-        click.echo(f"  {ons:11s} {name:30s} {wa} -> {wb}")
+    click.echo(f"{len(flips)} flips between {run_a.name} and {run_b.name}:")
+    for _, r in flips.iterrows():
+        click.echo(f"  {r['ons_code']:11s} {r['constituency_name']:30s} {r['winner_a']} -> {r['winner_b']}")
