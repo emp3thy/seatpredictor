@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-04-26T21:04:18Z",
+  "derived_from_snapshot_hash": "a80a24d29233",
+  "derived_from_snapshot_as_of_date": "2026-04-26",
+  "derived_from_local_elections_yaml_sha256": "7d269ec395d7",
+  "method": {
+    "description": "actual_minus_final_week_poll_mean, weighted",
+    "final_week_window_days": 7,
+    "geography": "GB",
+    "weights": {
+      "ge": 1.0,
+      "local_election": 1.0,
+      "by_election": 1.0
+    },
+    "interpretation_note": "positive aggregate.bias_pp means pollsters under-state Reform; the recommended_reform_polling_correction_pp can be passed to seatpredict-predict via --reform-polling-correction-pp."
+  },
+  "events_used": 5,
+  "events_with_polls": 5,
+  "aggregate": {
+    "bias_pp": 4.863047619047618,
+    "interpretation": "positive value: pollsters under-state Reform on average; recommended correction = +bias_pp",
+    "recommended_reform_polling_correction_pp": 4.863047619047618
+  },
+  "per_pollster": {
+    "find_out_now": {
+      "mean_bias_pp": 2.804,
+      "n_events_with_polls": 5,
+      "reliability": "high"
+    },
+    "yougov": {
+      "mean_bias_pp": 6.304,
+      "n_events_with_polls": 5,
+      "reliability": "high"
+    },
+    "more_in_common": {
+      "mean_bias_pp": 4.904,
+      "n_events_with_polls": 5,
+      "reliability": "high"
+    },
+    "opinium": {
+      "mean_bias_pp": 3.38,
+      "n_events_with_polls": 4,
+      "reliability": "high"
+    },
+    "techne": {
+      "mean_bias_pp": 4.6066666666666665,
+      "n_events_with_polls": 3,
+      "reliability": "high"
+    },
+    "ipsos": {
+      "mean_bias_pp": -7.899999999999999,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    },
+    "survation": {
+      "mean_bias_pp": -0.8999999999999986,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    },
+    "lord_ashcroft_polls": {
+      "mean_bias_pp": 4.6000000000000005,
+      "n_events_with_polls": 3,
+      "reliability": "high"
+    },
+    "bmg_research": {
+      "mean_bias_pp": -4.899999999999999,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    },
+    "norstat": {
+      "mean_bias_pp": 5.100000000000001,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    },
+    "focaldata": {
+      "mean_bias_pp": 6.0,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    },
+    "omnisis": {
+      "mean_bias_pp": -0.3000000000000007,
+      "n_events_with_polls": 1,
+      "reliability": "low"
+    }
+  },
+  "per_event": [
+    {
+      "event_id": "runcorn_helsby_2025",
+      "type": "by_election",
+      "date": "2025-05-01",
+      "actual_share_pp": 38.72,
+      "actual_source": null,
+      "poll_mean_share_pp": 25.666666666666668,
+      "bias_pp": 13.053333333333331,
+      "weight": 1.0,
+      "n_polls_in_window": 6,
+      "pollsters_in_window": [
+        "find_out_now",
+        "more_in_common",
+        "opinium",
+        "techne",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "hamilton_larkhall_stonehouse_2025",
+      "type": "by_election",
+      "date": "2025-06-05",
+      "actual_share_pp": 26.1,
+      "actual_source": null,
+      "poll_mean_share_pp": 28.9,
+      "bias_pp": -2.799999999999997,
+      "weight": 1.0,
+      "n_polls_in_window": 10,
+      "pollsters_in_window": [
+        "bmg_research",
+        "find_out_now",
+        "ipsos",
+        "lord_ashcroft_polls",
+        "more_in_common",
+        "norstat",
+        "opinium",
+        "survation",
+        "techne",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "caerphilly_senedd_2025",
+      "type": "by_election",
+      "date": "2025-10-23",
+      "actual_share_pp": 36.0,
+      "actual_source": null,
+      "poll_mean_share_pp": 29.4,
+      "bias_pp": 6.600000000000001,
+      "weight": 1.0,
+      "n_polls_in_window": 5,
+      "pollsters_in_window": [
+        "find_out_now",
+        "focaldata",
+        "lord_ashcroft_polls",
+        "more_in_common",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "gorton_denton_2026",
+      "type": "by_election",
+      "date": "2026-02-26",
+      "actual_share_pp": 28.7,
+      "actual_source": null,
+      "poll_mean_share_pp": 25.571428571428573,
+      "bias_pp": 3.1285714285714263,
+      "weight": 1.0,
+      "n_polls_in_window": 7,
+      "pollsters_in_window": [
+        "find_out_now",
+        "lord_ashcroft_polls",
+        "more_in_common",
+        "omnisis",
+        "opinium",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "2025_05_01_local",
+      "type": "local_election",
+      "date": "2025-05-01",
+      "actual_share_pp": 30.0,
+      "actual_source": "sole_source",
+      "poll_mean_share_pp": 25.666666666666668,
+      "bias_pp": 4.333333333333332,
+      "weight": 1.0,
+      "n_polls_in_window": 6,
+      "pollsters_in_window": [
+        "find_out_now",
+        "more_in_common",
+        "opinium",
+        "techne",
+        "yougov"
+      ]
+    }
+  ]
+}
