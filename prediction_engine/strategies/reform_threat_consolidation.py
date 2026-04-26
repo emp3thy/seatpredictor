@@ -259,4 +259,18 @@ def _seat_with_flags(
 
 
 def _argmax(shares: dict[PartyCode, float]) -> PartyCode:
+    """Return the party with the highest share. On ties, pick the alphabetically-EARLIER
+    first character of party_code (Lab='l'<'r' beats Reform on a 35/35 tie).
+
+    Tie-break key: (share, -ord(first_char)). max() picks the largest tuple, so:
+      - higher share wins outright
+      - on equal shares, larger -ord wins, i.e. SMALLER ord, i.e. earlier letter
+    For same-first-character pairs (Lab/LD both 'l'), the second-element keys are equal;
+    Python's max() then preserves dict insertion order — which here is PartyCode
+    declaration order (LAB before LD), so Lab wins. This is asymmetric with
+    identify_consolidator's `min((-share, p.value))` rule (which uses the FULL party
+    string for tie-break) — the asymmetry is intentional: _argmax breaks Reform vs
+    left-bloc ties in favor of the left-bloc party (so non_reform_leader fires first
+    and consolidator_already_leads remains the structurally unreachable defensive guard).
+    """
     return max(shares, key=lambda p: (shares[p], -ord(p.value[0])))

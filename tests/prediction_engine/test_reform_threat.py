@@ -240,7 +240,14 @@ def test_reform_threat_shares_sum_to_100_per_seat(tiny_snapshot_path):
 
 def test_reform_threat_consolidator_already_leads_unit():
     """Hand-built shares unit test for the consolidator_already_leads guard.
-    The path is reachable only at exact share ties between Reform and a left-bloc party.
+
+    Why the integration path is unreachable: _argmax uses the key
+    (share, -ord(p.value[0])). On a Reform=Lab=35 tie, Reform's key is (35, -114) and
+    Lab's key is (35, -108). max() picks the larger tuple, so -108 > -114 → Lab wins
+    the leader role. _predict_seat then short-circuits via non_reform_leader BEFORE
+    the consolidator_already_leads check is reached. The guard remains a defensive
+    structural invariant — the unit test below validates its arithmetic without
+    invoking _predict_seat.
     """
     raw_shares = {p: 0.0 for p in PartyCode}
     raw_shares[PartyCode.REFORM] = 35.0
@@ -250,3 +257,15 @@ def test_reform_threat_consolidator_already_leads_unit():
     consolidator = identify_consolidator(raw_shares, nation="england")
     assert consolidator == PartyCode.LAB
     assert raw_shares[consolidator] >= raw_shares[PartyCode.REFORM]
+
+
+def test_reform_threat_multiplier_clipped_integration(tiny_snapshot_path):
+    """Integration coverage for the multiplier_clipped flag: a high multiplier on
+    Seat A should saturate at least one source's full share (ld_share * 0.6 * 1.0 * m
+    exceeds ld_share when m >= 1/0.6 ≈ 1.667). The flag must round-trip through
+    _seat_with_flags' json.dumps."""
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig(multiplier=5.0))
+    a = _seat(res.per_seat, "TST00001")
+    flags = json.loads(a["notes"])
+    assert "multiplier_clipped" in flags
