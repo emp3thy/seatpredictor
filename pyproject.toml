@@ -23,6 +23,7 @@ dev = [
 [project.scripts]
 seatpredict-data = "data_engine.cli:main"
 seatpredict-predict = "prediction_engine.cli:main"
+seatpredict-analyze = "prediction_engine.cli_analyze:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
