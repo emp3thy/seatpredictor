@@ -9,7 +9,7 @@ Adds a new event to `data/hand_curated/local_elections.yaml` for the most-recent
 
 ## Steps
 
-1. **Determine the date.** If the user named one (e.g. "May 2026"), use the first Thursday of that month. Otherwise ask. Confirm before proceeding.
+1. **Determine the date.** If the user named one (e.g. "May 2026"), default to the first Thursday of that month (historical convention for English local-election polling day) but verify against the BBC or Wikipedia source page since the statutory date can shift. Otherwise ask. Confirm before proceeding.
 
 2. **Look up PNS values from these sources, in order. Use WebFetch on each.** Record each source's per-party shares plus the URL where they were published.
 
@@ -23,7 +23,7 @@ Adds a new event to `data/hand_curated/local_elections.yaml` for the most-recent
    For each source, extract per-party shares (con, lab, ld, reform, green, plaid, snp, other). Use 0.0 for parties not listed. Lower-case party keys per `PartyCode.value`.
 
 3. **Reconcile across sources:**
-   - If 2+ sources published, the consolidated `shares` is the per-party median across sources. Set `consolidated.method = "median_across_sources"`.
+   - If 2+ sources published, the consolidated `shares` is the per-party median across sources. Set `consolidated.method = "median_across_sources"`. For an even count of sources, take the arithmetic mean of the two middle values per party (Python's `statistics.median` does this automatically).
    - If only 1 source published (e.g. BBC alone), use it directly. Set `consolidated.method = "sole_source"`.
    - If sources disagree on Reform by more than 2pp, flag in the YAML's `notes` field and surface this to the user before writing — ask whether they want to proceed.
 
