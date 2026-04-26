@@ -1,14 +1,16 @@
 # Tiny snapshot seed for prediction-engine tests.
-# 6 seats × 2 polls × 2 by-election events. Polls ≈ aggregate GE-2024 shares so swings ≈ 0;
-# share_raw ≈ share_2024 in every seat.
+# 6 seats × 2 polls × 2 by-election events. Polls ≈ aggregate GE-2024 shares (excluding NI seat F)
+# so GB swings ≈ 0 and share_raw ≈ share_2024 in every seat.
+# GB-only aggregate (seats A-E, 250000 votes): con=16.6, lab=23.8, ld=9.4, reform=28.6,
+# green=7.0, snp=5.4, plaid=6.0, other=3.2 → rounded to integer polls below (sum=100).
 
 polls:
   - { pollster: TestCo, fieldwork_start: 2026-04-15, fieldwork_end: 2026-04-17,
       published_date: 2026-04-18, sample_size: 1000, geography: GB,
-      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
+      con: 17, lab: 24, ld: 9, reform: 29, green: 7, snp: 5, plaid: 6, other: 3 }
   - { pollster: TestCo, fieldwork_start: 2026-04-20, fieldwork_end: 2026-04-22,
       published_date: 2026-04-23, sample_size: 1100, geography: GB,
-      con: 14, lab: 20, ld: 8, reform: 24, green: 8, snp: 5, plaid: 5, other: 16 }
+      con: 17, lab: 24, ld: 9, reform: 29, green: 7, snp: 5, plaid: 6, other: 3 }
 
 results_2024:
   # Seat A — England, Reform leader, Lab consolidator, HIGH clarity (Lab-LD gap = 20pp).
@@ -23,14 +25,15 @@ results_2024:
   - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
   - { ons_code: TST00001, constituency_name: Aldermouth, region: North West, nation: england, party: other,  votes:  2500, share:  5.0 }
 
-  # Seat B — England, Reform leader, Lab consolidator, LOW clarity (Lab-LD gap = 2pp).
-  # Reform 25 > Lab 24 > LD 22 > Green 14. Lab is consolidator. Lab-LD gap = 2pp → clarity = 0.4 at
-  # default threshold=5 (low_clarity flag fires; flow still applies, scaled by 0.4).
+  # Seat B — England, Reform leader, Lab consolidator, LOW clarity (Lab-LD gap = 1pp).
+  # Reform 25 > Lab 23 > LD 22 > Green 15. Lab is consolidator. Lab-LD gap = 1pp pre-swing,
+  # ~1.8pp post-swing → clarity ≈ 0.36 at default threshold=5 (low_clarity flag fires).
+  # Seat A and D have wider gaps so they hit clarity=1.0; this seat exercises the low path.
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: con,    votes:  6000, share: 12.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: lab,    votes: 12000, share: 24.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: lab,    votes: 11500, share: 23.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: ld,     votes: 11000, share: 22.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: reform, votes: 12500, share: 25.0 }
-  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: green,  votes:  7000, share: 14.0 }
+  - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: green,  votes:  7500, share: 15.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: snp,    votes:     0, share:  0.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: plaid,  votes:     0, share:  0.0 }
   - { ons_code: TST00002, constituency_name: Bramford,  region: North West, nation: england, party: other,  votes:  1500, share:  3.0 }

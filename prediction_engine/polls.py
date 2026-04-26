@@ -7,19 +7,30 @@ from schema.common import PartyCode
 logger = logging.getLogger(__name__)
 
 
+# Nations covered by the GB national VI poll question (England + Scotland + Wales).
+# Northern Ireland is excluded from GB polls — pollsters don't include NI respondents,
+# and NI's seats are dominated by NI-specific parties (DUP, Sinn Féin, etc.) which
+# bucket as `other` in our PartyCode enum. Including NI's ~18 seats in the GE-2024
+# baseline would inflate `other` and dilute every other party's baseline share,
+# producing systematically wrong per-party swings.
+_GB_NATIONS: tuple[str, ...] = ("england", "scotland", "wales")
+
+
 def ge2024_national_share(
     results_2024: pd.DataFrame,
-    nation_filter: str | None = None,
+    nations: tuple[str, ...] | None = None,
 ) -> dict[PartyCode, float]:
     """Vote-weighted national share per party from the 2024 GE results.
 
-    nation_filter: if given (e.g. 'wales'), restrict to that nation; else GB-wide.
+    nations: tuple of nation values (e.g. ("england", "scotland", "wales")) to restrict
+    the aggregation. None means aggregate over every nation in the frame (rare in
+    production — callers normally pass an explicit nation tuple).
     """
     df = results_2024
-    if nation_filter is not None:
-        df = df.loc[df["nation"] == nation_filter]
+    if nations is not None:
+        df = df.loc[df["nation"].isin(nations)]
     if df.empty:
-        raise ValueError(f"no results for nation_filter={nation_filter}")
+        raise ValueError(f"no results for nations={nations}")
 
     by_party = df.groupby("party", as_index=False)["votes"].sum()
     total = float(by_party["votes"].sum())
@@ -31,11 +42,15 @@ def ge2024_national_share(
     return {p: (votes_by_party.get(p.value, 0.0) / total) * 100.0 for p in PartyCode}
 
 
-_GEO_TO_NATION_FILTER: dict[str, str | None] = {
-    "GB": None,
-    "Scotland": "scotland",
-    "Wales": "wales",
-    "London": None,  # no London-only filter on results_2024 in v1
+# Map the poll-table `geography` label to the GE-2024 baseline nations.
+# - "GB" excludes NI (see _GB_NATIONS comment above).
+# - "Scotland" / "Wales" use only their own nation.
+# - "London" has no London-only baseline column; falls back to GB-nation baseline.
+_GEO_TO_NATIONS: dict[str, tuple[str, ...]] = {
+    "GB": _GB_NATIONS,
+    "Scotland": ("scotland",),
+    "Wales": ("wales",),
+    "London": _GB_NATIONS,
 }
 
 
@@ -50,6 +65,8 @@ def compute_swing(
 
     Window: published_date in (as_of - window_days, as_of].
     Failures (no polls match) raise ValueError per spec §8.
+    The GE-2024 baseline is restricted to the nations that the poll geography covers
+    — GB polls exclude Northern Ireland.
     """
     if window_days <= 0:
         raise ValueError(f"window_days must be > 0 (got {window_days})")
@@ -68,7 +85,7 @@ def compute_swing(
         )
 
     poll_means = {p: float(window[p.value].mean()) for p in PartyCode}
-    ge_shares = ge2024_national_share(results_2024, nation_filter=_GEO_TO_NATION_FILTER[geography])
+    ge_shares = ge2024_national_share(results_2024, nations=_GEO_TO_NATIONS[geography])
     swing = {p: poll_means[p] - ge_shares[p] for p in PartyCode}
 
     logger.debug(

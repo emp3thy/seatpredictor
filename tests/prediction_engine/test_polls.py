@@ -46,10 +46,37 @@ def _results_2024_df() -> pd.DataFrame:
 
 
 def test_ge2024_national_share_vote_weighted():
-    shares = ge2024_national_share(_results_2024_df(), nation_filter=None)
+    shares = ge2024_national_share(_results_2024_df(), nations=None)
     assert shares[PartyCode.CON]    == pytest.approx(20.0)
     assert shares[PartyCode.LAB]    == pytest.approx(30.0)
     assert shares[PartyCode.REFORM] == pytest.approx(15.0)
+
+
+def test_compute_swing_gb_baseline_excludes_northern_ireland():
+    """GB polls cover England + Scotland + Wales only; the GE-2024 baseline must
+    exclude Northern Ireland's seats. NI's votes (mostly NI-specific parties bucketed
+    as `other`) would dilute every other party's GB baseline if included.
+
+    Construct a frame with England-only data (lab=30%) plus a large NI seat where
+    100% of votes are coded as `other`. With NI-included baseline, lab share gets
+    diluted; with NI-excluded (correct), lab share is the GB-only 30% and the GB
+    swing computes against that.
+    """
+    england = _results_2024_df()  # 2 England seats, 200 total votes, lab=60 of those
+    ni = pd.DataFrame([
+        {"ons_code": "NI1", "constituency_name": "NI1", "region": "NI",
+         "nation": "northern_ireland", "party": "other", "votes": 1000, "share": 100.0},
+    ])
+    results = pd.concat([england, ni], ignore_index=True)
+
+    # GB nations: England-only baseline → lab share = 60/200 = 30%.
+    gb_shares = ge2024_national_share(results, nations=("england", "scotland", "wales"))
+    assert gb_shares[PartyCode.LAB] == pytest.approx(30.0)
+
+    # All-nations: lab share gets diluted by NI's 1000 votes (none lab) → 60/1200 = 5%.
+    all_shares = ge2024_national_share(results, nations=None)
+    assert all_shares[PartyCode.LAB] == pytest.approx(60.0 / 1200.0 * 100.0)
+    assert all_shares[PartyCode.LAB] != pytest.approx(30.0)
 
 
 def test_compute_swing_subtracts_ge2024_share():
