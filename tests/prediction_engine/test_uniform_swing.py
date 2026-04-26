@@ -98,3 +98,15 @@ def test_uniform_swing_determinism(tiny_snapshot_path):
     a_sorted = a.sort_values("ons_code").reset_index(drop=True)
     b_sorted = b.sort_values("ons_code").reset_index(drop=True)
     assert a_sorted.equals(b_sorted)
+
+
+def test_uniform_swing_run_metadata_shape(tiny_snapshot_path):
+    """Tasks 10 and 11 (SQLite I/O + runner) consume run_metadata; lock the contract."""
+    import json
+    snap = Snapshot(tiny_snapshot_path)
+    result = UniformSwingStrategy().predict(snap, UniformSwingConfig())
+    assert set(result.run_metadata.keys()) == {"strategy", "scenario", "snapshot_id"}
+    assert result.run_metadata["strategy"] == "uniform_swing"
+    # scenario must be JSON-serialisable — Task 10 stores it as a JSON string.
+    json.dumps(result.run_metadata["scenario"])
+    assert result.run_metadata["snapshot_id"] == snap.snapshot_id
