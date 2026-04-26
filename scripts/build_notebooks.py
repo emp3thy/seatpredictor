@@ -13,6 +13,23 @@ from nbformat.v4 import new_notebook, new_code_cell, new_markdown_cell
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+# Prepended to every notebook so cells can use plain Path("data/...") even when
+# the kernel cwd is the notebook's directory (JupyterLab default) or anywhere
+# else inside the repo. Walks up from cwd to the first pyproject.toml and
+# chdirs there.
+_PRELUDE = '''import os
+from pathlib import Path
+
+def _find_repo_root() -> Path:
+    p = Path.cwd().resolve()
+    for candidate in [p, *p.parents]:
+        if (candidate / "pyproject.toml").exists():
+            return candidate
+    raise RuntimeError("could not find repo root (no pyproject.toml in cwd or any parent)")
+
+os.chdir(_find_repo_root())'''
+
+
 _NB_01_TITLE_MD = "# Polling trends\n\nPer-party 7-day rolling mean from the GB national-VI poll table. Sanity-checks the data engine output."
 _NB_01_LOAD = '''from pathlib import Path
 import matplotlib.pyplot as plt
@@ -101,24 +118,28 @@ _NB_04_INTERP = "Reform's line should be monotonically decreasing; the consolida
 NOTEBOOK_SPECS = [
     ("01_polling_trends.ipynb", [
         ("md", _NB_01_TITLE_MD),
+        ("code", _PRELUDE),
         ("code", _NB_01_LOAD),
         ("code", _NB_01_PLOT),
         ("md", _NB_01_INTERP),
     ]),
     ("02_constituency_drilldown.ipynb", [
         ("md", _NB_02_TITLE_MD),
+        ("code", _PRELUDE),
         ("code", _NB_02_LOAD),
         ("code", _NB_02_TABLE),
         ("md", _NB_02_INTERP),
     ]),
     ("03_strategy_comparison.ipynb", [
         ("md", _NB_03_TITLE_MD),
+        ("code", _PRELUDE),
         ("code", _NB_03_LOAD),
         ("code", _NB_03_PLOT),
         ("md", _NB_03_INTERP),
     ]),
     ("04_scenario_sweep.ipynb", [
         ("md", _NB_04_TITLE_MD),
+        ("code", _PRELUDE),
         ("code", _NB_04_RUN),
         ("code", _NB_04_PLOT),
         ("md", _NB_04_INTERP),
