@@ -16,7 +16,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # Prepended to every notebook so cells can use plain Path("data/...") even when
 # the kernel cwd is the notebook's directory (JupyterLab default) or anywhere
 # else inside the repo. Walks up from cwd to the first pyproject.toml and
-# chdirs there.
+# chdirs there. Also exposes _pick_prediction() so the data-loading cells select
+# the intended baseline run by label, not by alphabetical filename order — which
+# breaks once sweep_* files share the directory.
 _PRELUDE = '''import os
 from pathlib import Path
 
@@ -27,7 +29,42 @@ def _find_repo_root() -> Path:
             return candidate
     raise RuntimeError("could not find repo root (no pyproject.toml in cwd or any parent)")
 
-os.chdir(_find_repo_root())'''
+os.chdir(_find_repo_root())
+
+def _latest_snapshot_hash() -> str:
+    """Return the content hash of the most recent snapshot. Filenames are
+    YYYY-MM-DD__v<schema>__<hash>.sqlite, so lexical sort = chronological."""
+    snaps = sorted(Path("data/snapshots").glob("*.sqlite"))
+    if not snaps:
+        raise FileNotFoundError("no snapshots in data/snapshots/; run /snapshot first")
+    return snaps[-1].stem.split("__")[-1]
+
+def _pick_prediction(strategy_marker: str, label: str) -> Path:
+    """Select the prediction file for the LATEST snapshot whose name contains
+    strategy_marker AND label. Prediction filenames are
+    <snap_hash>__<strategy>__<config_hash>__<label>.sqlite. Fails loud if 0 or
+    >1 files match — the previous sorted(glob)[-1] silently picked an
+    alphabetically-last file, which became nondeterministic once sweep_* runs
+    or older snapshots' predictions shared the directory."""
+    snap_hash = _latest_snapshot_hash()
+    pred_dir = Path("data/predictions")
+    matches = [
+        p for p in pred_dir.glob(f"{snap_hash}__*{strategy_marker}*.sqlite")
+        if label in p.name
+    ]
+    if not matches:
+        raise FileNotFoundError(
+            f"no prediction in {pred_dir} for snapshot {snap_hash} matching "
+            f"strategy={strategy_marker!r} label={label!r}; run /predict first"
+        )
+    if len(matches) > 1:
+        names = sorted(p.name for p in matches)
+        raise RuntimeError(
+            f"multiple predictions for snapshot {snap_hash} match "
+            f"strategy={strategy_marker!r} label={label!r}: {names}; "
+            f"remove duplicates or pass a more specific label"
+        )
+    return matches[0]'''
 
 
 _NB_01_TITLE_MD = "# Polling trends\n\nPer-party 7-day rolling mean from the GB national-VI poll table. Sanity-checks the data engine output."
@@ -47,12 +84,11 @@ plt.show()'''
 _NB_01_INTERP = "Lines should be smooth (no sub-cell spikes); Reform should sit above other parties when the snapshot's GB national VI shows it leading."
 
 _NB_02_TITLE_MD = "# Constituency drilldown\n\nPick a seat. Show projected raw shares, the consolidator, clarity, matrix entries, flows, and the final prediction."
-_NB_02_LOAD = '''from pathlib import Path
-import sqlite3
+_NB_02_LOAD = '''import sqlite3
 from contextlib import closing
 from prediction_engine.analysis.drilldown import explain_seat
 
-prediction_path = sorted(Path("data/predictions").glob("*reform_threat_consolidation*.sqlite"))[-1]
+prediction_path = _pick_prediction("reform_threat_consolidation", "baseline_rtc")
 with closing(sqlite3.connect(str(prediction_path))) as conn:
     cur = conn.execute("SELECT ons_code FROM seats WHERE notes != '[]' ORDER BY ons_code LIMIT 1")
     row = cur.fetchone()
@@ -64,13 +100,11 @@ pd.DataFrame({"raw": report["share_raw"], "predicted": report["share_predicted"]
 _NB_02_INTERP = "Expect lab/plaid/snp/green's share_predicted > share_raw on Reform-threat seats; the parties in `matrix_provenance` are the by-elections that contributed."
 
 _NB_03_TITLE_MD = "# Strategy comparison\n\nuniform_swing vs reform_threat_consolidation. List flips; chart national-total deltas."
-_NB_03_LOAD = '''from pathlib import Path
-from prediction_engine.analysis.flips import compute_flips
+_NB_03_LOAD = '''from prediction_engine.analysis.flips import compute_flips
 from prediction_engine.sqlite_io import read_prediction_national
 
-pred_dir = Path("data/predictions")
-us_run  = sorted(pred_dir.glob("*uniform_swing*.sqlite"))[-1]
-rtc_run = sorted(pred_dir.glob("*reform_threat_consolidation*.sqlite"))[-1]
+us_run  = _pick_prediction("uniform_swing", "baseline_us")
+rtc_run = _pick_prediction("reform_threat_consolidation", "baseline_rtc")
 flips = compute_flips(us_run, rtc_run)
 flips.head(20)'''
 _NB_03_PLOT = '''import matplotlib.pyplot as plt
