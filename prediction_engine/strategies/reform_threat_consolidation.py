@@ -73,9 +73,9 @@ def apply_flows(
             if "multiplier_clipped" not in flag_sink:
                 flag_sink.append("multiplier_clipped")
         out[source] -= moved
-        out[consolidator] = out.get(consolidator, 0.0) + moved
+        out[consolidator] += moved
         logger.debug(
-            "apply_flows: %s → %s moved=%.4f (wanted=%.4f)",
+            "apply_flows: %s -> %s moved=%.4f (wanted=%.4f)",
             source.value, consolidator.value, moved, wanted,
         )
     return out

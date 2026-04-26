@@ -99,15 +99,23 @@ def test_apply_flows_zero_clarity_means_no_flow():
     assert out[PartyCode.LAB] == pytest.approx(30.0)
 
 
-def test_compute_clarity_full_when_consolidator_is_only_left_bloc_party():
-    """Edge case: in NI the LEFT_BLOC is empty, but other configurations could leave
-    the consolidator as the only left-bloc party present. With no rivals to compare
-    against, clarity is treated as 1.0 — the consolidation is trivially unambiguous."""
-    # Wales LEFT_BLOC = {lab, ld, green, plaid}. With only Plaid having any share,
-    # next_highest is 0, gap = full plaid share → clarity clamped to 1.0.
+def test_compute_clarity_full_when_rivals_have_zero_share():
+    """When the consolidator's left-bloc rivals all have 0 share (others didn't make
+    the seat threshold), next_highest=0 and gap=consolidator_share. With share >> threshold
+    that clamps to 1.0. This is the typical "uncontested consolidation" case in the seed."""
+    # Wales LEFT_BLOC = {lab, ld, green, plaid}. Plaid alone has share; next_highest = 0.
+    # gap = 20, threshold = 5 → 20/5 = 4.0 clamped to 1.0.
     shares = _shares(reform=30.0, plaid=20.0)
     clarity = compute_clarity(shares, consolidator=PartyCode.PLAID, nation="wales", threshold=5.0)
     assert clarity == pytest.approx(1.0)
+
+
+def test_identify_consolidator_returns_none_for_northern_ireland():
+    """LEFT_BLOC[Nation.NORTHERN_IRELAND] is empty by construction; no consolidator
+    is ever identifiable in NI. Task 9's strategy short-circuits on NI before reaching
+    this helper, but the contract here is the safety net."""
+    shares = _shares(reform=30.0, lab=10.0, ld=5.0)
+    assert identify_consolidator(shares, nation="northern_ireland") is None
 
 
 def test_identify_consolidator_tie_break_alphabetical():
