@@ -53,23 +53,26 @@ def _final_week_polls(polls: pd.DataFrame, event_date: date,
     return polls.loc[mask]
 
 
-def _event_actual_reform(by_event_id: str | None, by_results: pd.DataFrame,
-                          local: LocalElectionEvent | None) -> tuple[float | None, str | None]:
-    """Return (actual_reform_share_pp, source_descriptor) for one event.
-    Returns (None, None) for by-elections where Reform didn't stand (no row in
-    by_results for party='reform') — caller must handle and exclude from aggregate."""
-    if local is not None:
-        share = float(local.consolidated_shares.get("reform", 0.0))
-        return share, local.consolidated_method
-    if by_event_id is None:
-        raise ValueError("must pass either by_event_id or local")
-    rows = by_results.loc[by_results["event_id"] == by_event_id]
+def _byelection_actual_reform(event_id: str, by_results: pd.DataFrame) -> float | None:
+    """Return Reform's actual share at this by-election, or None if Reform didn't stand
+    (no row in by_results for party='reform'). Caller must treat None as 'exclude
+    from bias aggregate' — see compute_reform_bias's by-election walker."""
+    rows = by_results.loc[by_results["event_id"] == event_id]
     if rows.empty:
-        raise ValueError(f"no by-election results for event_id={by_event_id}")
+        raise ValueError(f"no by-election results for event_id={event_id}")
     reform_rows = rows.loc[rows["party"] == "reform"]
     if reform_rows.empty:
-        return None, None
-    return float(reform_rows["actual_share"].iloc[0]), None
+        return None
+    return float(reform_rows["actual_share"].iloc[0])
+
+
+def _local_actual_reform(local: LocalElectionEvent) -> tuple[float, str]:
+    """Return (Reform's PNS share, consolidated_method) for a local-election event.
+    Reform always defaults to 0.0 if missing from consolidated_shares (a national PNS
+    metric where Reform stands GB-wide; absent key means the source omitted them, which
+    is treated as 0% rather than excluded)."""
+    share = float(local.consolidated_shares.get("reform", 0.0))
+    return share, local.consolidated_method
 
 
 def compute_reform_bias(
@@ -100,7 +103,7 @@ def compute_reform_bias(
     for _, row in by_events.iterrows():
         event_id = str(row["event_id"])
         event_date = date.fromisoformat(str(row["date"]))
-        actual_reform, _ = _event_actual_reform(event_id, by_results, None)
+        actual_reform = _byelection_actual_reform(event_id, by_results)
         if actual_reform is None:
             # Reform didn't stand — record descriptively, exclude from aggregate.
             per_event_rows.append({
@@ -144,7 +147,7 @@ def compute_reform_bias(
     # Walk local elections
     for ev in (local_elections or []):
         event_id = f"{ev.date.isoformat().replace('-', '_')}_local"
-        actual_reform, source_method = _event_actual_reform(None, by_results, ev)
+        actual_reform, source_method = _local_actual_reform(ev)
         window = _final_week_polls(polls, ev.date, final_week_window_days)
         if window.empty:
             per_event_rows.append({
