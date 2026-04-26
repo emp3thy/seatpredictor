@@ -68,13 +68,16 @@ def write_prediction_db(
 
 def _explode_notes(seats: pd.DataFrame) -> pd.DataFrame:
     """Expand the JSON-string `notes` column into a long-format (ons_code, flag) frame.
-    Iterates over plain-dict records (not iterrows-Series) so json.loads gets a str."""
+    Pull the two columns to Python lists first; pandas's iterrows/to_dict overloads
+    confuse pyright but plain zip(list, list) is unambiguous."""
     rows: list[dict] = []
-    for record in seats[["ons_code", "notes"]].to_dict(orient="records"):
-        notes_str = record["notes"] or "[]"
-        flags = json.loads(notes_str)
+    ons_codes = list(seats["ons_code"])
+    notes_strs = list(seats["notes"])
+    for ons, notes_str in zip(ons_codes, notes_strs):
+        s = notes_str if notes_str else "[]"
+        flags = json.loads(s)
         for flag in flags:
-            rows.append({"ons_code": record["ons_code"], "flag": flag})
+            rows.append({"ons_code": ons, "flag": flag})
     return pd.DataFrame(rows, columns=pd.Index(["ons_code", "flag"]))
 
 
