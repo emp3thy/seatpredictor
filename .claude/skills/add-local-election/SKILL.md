@@ -1,4 +1,5 @@
 ---
+name: add-local-election
 description: Use when the user wants to add a new UK local-election Projected National Share (PNS) entry to data/hand_curated/local_elections.yaml. Triggers on phrases like "add local election", "new PNS entry", "May elections came in", "update local elections". Walks through sourcing PNS from BBC, Sky, Britain Elects, and Wikipedia, reconciling across sources, and appending a validated entry to the YAML.
 ---
 
