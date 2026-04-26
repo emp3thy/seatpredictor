@@ -22,10 +22,11 @@ dev = [
 
 [project.scripts]
 seatpredict-data = "data_engine.cli:main"
+seatpredict-predict = "prediction_engine.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["schema*", "data_engine*"]
+include = ["schema*", "data_engine*", "prediction_engine*"]
 # NB: do NOT use "data*" here — it matches "data_engine". Exclude the literal
 # "data" directory only.
 exclude = ["tests*", "data", "docs*", "notebooks*"]
