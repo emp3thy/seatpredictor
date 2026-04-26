@@ -18,14 +18,21 @@ dependencies = [
 dev = [
     "pytest>=8.0,<9",
     "respx>=0.21,<1",
+    "jupyterlab>=4.0,<5",
+    "matplotlib>=3.8,<4",
+    "nbformat>=5.10,<6",
+    "nbclient>=0.10,<1",
+    "ipykernel>=6.29,<7",
 ]
 
 [project.scripts]
 seatpredict-data = "data_engine.cli:main"
+seatpredict-predict = "prediction_engine.cli:main"
+seatpredict-analyze = "prediction_engine.cli_analyze:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["schema*", "data_engine*"]
+include = ["schema*", "data_engine*", "prediction_engine*"]
 # NB: do NOT use "data*" here — it matches "data_engine". Exclude the literal
 # "data" directory only.
 exclude = ["tests*", "data", "docs*", "notebooks*"]

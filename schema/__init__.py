@@ -4,6 +4,15 @@ from schema.constituency import ConstituencyResult
 from schema.byelection import ByElectionEvent, ByElectionResult, EventType
 from schema.transfer_weights import TransferWeightCell, TransferWeightProvenance
 from schema.snapshot import SnapshotManifest
+from schema.prediction import (
+    ScenarioConfig,
+    UniformSwingConfig,
+    ReformThreatConfig,
+    SeatPrediction,
+    NationalTotal,
+    RunConfig,
+    ALLOWED_NOTE_FLAGS,
+)
 
 __all__ = [
     "PartyCode",
@@ -18,4 +27,11 @@ __all__ = [
     "TransferWeightCell",
     "TransferWeightProvenance",
     "SnapshotManifest",
+    "ScenarioConfig",
+    "UniformSwingConfig",
+    "ReformThreatConfig",
+    "SeatPrediction",
+    "NationalTotal",
+    "RunConfig",
+    "ALLOWED_NOTE_FLAGS",
 ]
