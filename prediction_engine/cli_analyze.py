@@ -37,7 +37,7 @@ def drilldown_cmd(run_path: Path, seat: str, explain: bool):
     for party in report["share_raw"]:
         raw = report["share_raw"][party]
         pred = report["share_predicted"][party]
-        click.echo(f"    {party:7s}  {raw:5.1f}  ->  {pred:5.1f}  (Δ {pred - raw:+5.2f})")
+        click.echo(f"    {party:7s}  {raw:5.1f}  ->  {pred:5.1f}  (d {pred - raw:+5.2f})")
 
 
 @main.command("flips")
