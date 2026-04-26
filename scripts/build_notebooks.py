@@ -1,4 +1,4 @@
-"""Generate the four analysis notebooks from this script.
+"""Generate the analysis notebooks from this script.
 
 Run me with: uv run python scripts/build_notebooks.py
 The notebooks are committed to git alongside this script. To edit a cell, edit
@@ -148,6 +148,52 @@ plt.title("National seat count vs reform-threat multiplier")
 plt.show()'''
 _NB_04_INTERP = "Reform's line should be monotonically decreasing; the consolidator parties' lines monotonically increasing."
 
+_NB_05_TITLE_MD = """# Reform polling bias
+
+For every electoral event in our snapshot (by-elections + curated local-election PNS), \
+compare the pre-event 7-day national poll mean for Reform against the actual Reform result. \
+Aggregate to a single recommended `--reform-polling-correction-pp` value.
+
+**Caveats:** by-elections and local elections are weighted equally (see spec §5.2). \
+Per-pollster bias is shown but is descriptive — most pollsters appear in too few events for \
+statistically powerful estimates."""
+
+_NB_05_LOAD = '''from pathlib import Path
+from data_engine.sources.local_elections import load_local_elections
+from prediction_engine.snapshot_loader import Snapshot
+from prediction_engine.analysis.poll_bias import compute_reform_bias, write_bias_json
+
+snap_path = sorted(Path("data/snapshots").glob("*.sqlite"))[-1]
+snap = Snapshot(snap_path)
+local_yaml = Path("data/hand_curated/local_elections.yaml")
+local_events = load_local_elections(local_yaml)
+print(f"Snapshot: {snap_path.name}")
+print(f"Local-election events loaded: {len(local_events)}")
+print(f"By-election events in snapshot: {len(snap.byelections_events)}")'''
+
+_NB_05_COMPUTE = '''import pandas as pd
+result = compute_reform_bias(snap, local_elections=local_events)
+per_event_df = pd.DataFrame(result.per_event)
+per_event_df'''
+
+_NB_05_PER_POLLSTER = '''per_pollster_df = pd.DataFrame.from_dict(result.per_pollster, orient="index")
+per_pollster_df.sort_values("mean_bias_pp", ascending=False)'''
+
+_NB_05_HEADLINE = '''print(f"Aggregate Reform polling bias: {result.aggregate_bias_pp:+.2f} pp")
+print(f"Events used: {result.n_events_used} (with polls in window: {result.n_events_with_polls})")
+print()
+print(f"Recommended CLI flag:")
+print(f"  --reform-polling-correction-pp {result.recommended_reform_polling_correction_pp:+.2f}")'''
+
+_NB_05_WRITE = '''out_path = Path("data/derived/reform_polling_bias.json")
+write_bias_json(result, snap, local_elections_yaml_path=local_yaml, out_path=out_path)
+print(f"Wrote {out_path}")'''
+
+_NB_05_INTERP = """A positive aggregate means pollsters under-state Reform; pass `+aggregate` to \
+`seatpredict-predict --reform-polling-correction-pp`. Negative means pollsters over-state — pass the negative value. \
+Per-pollster numbers below `n_events_with_polls = 3` are flagged `low` reliability and should be \
+read as descriptive only."""
+
 
 NOTEBOOK_SPECS = [
     ("01_polling_trends.ipynb", [
@@ -177,6 +223,16 @@ NOTEBOOK_SPECS = [
         ("code", _NB_04_RUN),
         ("code", _NB_04_PLOT),
         ("md", _NB_04_INTERP),
+    ]),
+    ("05_reform_polling_bias.ipynb", [
+        ("md", _NB_05_TITLE_MD),
+        ("code", _PRELUDE),
+        ("code", _NB_05_LOAD),
+        ("code", _NB_05_COMPUTE),
+        ("code", _NB_05_PER_POLLSTER),
+        ("code", _NB_05_HEADLINE),
+        ("code", _NB_05_WRITE),
+        ("md", _NB_05_INTERP),
     ]),
 ]
 
