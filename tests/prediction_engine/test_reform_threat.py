@@ -269,3 +269,22 @@ def test_reform_threat_multiplier_clipped_integration(tiny_snapshot_path):
     a = _seat(res.per_seat, "TST00001")
     flags = json.loads(a["notes"])
     assert "multiplier_clipped" in flags
+
+
+def test_reform_threat_honours_reform_polling_correction(tiny_snapshot_path):
+    """+5pp correction lifts Reform's projected raw share before per-seat
+    threat-consolidation logic runs. share_raw_reform mean should rise; the
+    threat strategy may then flip MORE seats away from Reform (because Reform
+    leads in more seats post-correction), but share_raw is what the test pins."""
+    from prediction_engine.snapshot_loader import Snapshot
+    from prediction_engine.strategies.reform_threat_consolidation import ReformThreatStrategy
+    from schema.prediction import ReformThreatConfig
+    snap = Snapshot(tiny_snapshot_path)
+    base = ReformThreatStrategy().predict(snap, ReformThreatConfig()).per_seat
+    corr = ReformThreatStrategy().predict(
+        snap, ReformThreatConfig(reform_polling_correction_pp=5.0)
+    ).per_seat
+    base_reform_mean = base["share_raw_reform"].mean()
+    corr_reform_mean = corr["share_raw_reform"].mean()
+    assert corr_reform_mean - base_reform_mean > 3.0
+    assert corr_reform_mean - base_reform_mean < 5.5

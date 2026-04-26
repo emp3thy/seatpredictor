@@ -60,6 +60,7 @@ def compute_swing(
     as_of: date,
     window_days: int,
     geography: str,
+    reform_polling_correction_pp: float = 0.0,
 ) -> dict[PartyCode, float]:
     """Average per-party poll share over the window, then subtract GE 2024 share.
 
@@ -67,6 +68,13 @@ def compute_swing(
     Failures (no polls match) raise ValueError per spec §8.
     The GE-2024 baseline is restricted to the nations that the poll geography covers
     — GB polls exclude Northern Ireland.
+
+    reform_polling_correction_pp: optional correction added to Reform's swing AFTER
+    the poll-derived swing is computed. Positive value: pollsters under-state Reform
+    (so we bump the projected swing up by this many pp). Negative: pollsters
+    over-state Reform. Default 0.0 is a no-op. The empirical recommended value is
+    derived by notebook 05 from electoral events; users typically set it via the
+    --reform-polling-correction-pp CLI flag on seatpredict-predict.
     """
     if window_days <= 0:
         raise ValueError(f"window_days must be > 0 (got {window_days})")
@@ -88,9 +96,12 @@ def compute_swing(
     ge_shares = ge2024_national_share(results_2024, nations=_GEO_TO_NATIONS[geography])
     swing = {p: poll_means[p] - ge_shares[p] for p in PartyCode}
 
+    if reform_polling_correction_pp != 0.0:
+        swing[PartyCode.REFORM] += reform_polling_correction_pp
+
     logger.debug(
-        "Swing computed: as_of=%s geography=%s n_polls=%d swings=%s",
-        as_of, geography, len(window),
+        "Swing computed: as_of=%s geography=%s n_polls=%d correction=%+.2f swings=%s",
+        as_of, geography, len(window), reform_polling_correction_pp,
         {p.value: round(v, 2) for p, v in swing.items()},
     )
     return swing

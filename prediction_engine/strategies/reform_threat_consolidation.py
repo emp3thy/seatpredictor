@@ -106,6 +106,7 @@ class ReformThreatStrategy(Strategy):
             as_of=snapshot.manifest.as_of_date,
             window_days=scenario.polls_window_days,
             geography="GB",
+            reform_polling_correction_pp=scenario.reform_polling_correction_pp,
         )
         per_seat = project_raw_shares(snapshot.results_2024, {"GB": gb_swing})
 
