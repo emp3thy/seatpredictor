@@ -27,3 +27,28 @@ def test_flips_prints_diff(tiny_snapshot_path, tmp_path: Path):
     a, b = _two_runs(tiny_snapshot_path, tmp_path)
     res = CliRunner().invoke(analyze_main, ["flips", "--runs", str(a), str(b)])
     assert res.exit_code == 0, res.output
+    assert "flips" in res.output.lower() or "no flips" in res.output.lower()
+
+
+def test_flips_no_flips_when_runs_identical(tiny_snapshot_path, tmp_path: Path):
+    """Same path passed for both --runs ⇒ guaranteed zero flips. Locks the
+    short-circuit message that callers (notebooks, scripts) may grep for."""
+    a, _ = _two_runs(tiny_snapshot_path, tmp_path)
+    res = CliRunner().invoke(analyze_main, ["flips", "--runs", str(a), str(a)])
+    assert res.exit_code == 0, res.output
+    assert "no flips between the two runs" in res.output
+
+
+def test_drilldown_json_branch_no_explain(tiny_snapshot_path, tmp_path: Path):
+    """Without --explain, drilldown emits indented JSON (consumed by scripts/notebooks).
+    Locks the JSON contract: ons_code, share_raw dict, share_predicted dict."""
+    import json
+    a, _ = _two_runs(tiny_snapshot_path, tmp_path)
+    res = CliRunner().invoke(analyze_main, [
+        "drilldown", "--run", str(a), "--seat", "TST00001",
+    ])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["ons_code"] == "TST00001"
+    assert "share_raw" in data
+    assert "share_predicted" in data
