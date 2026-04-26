@@ -6,7 +6,6 @@ import click
 from prediction_engine.runner import run_prediction
 from prediction_engine.strategies.base import STRATEGY_REGISTRY
 from prediction_engine import strategies as _strategies  # noqa: F401  populates registry
-from schema.prediction import ReformThreatConfig, UniformSwingConfig
 
 
 @click.group()
@@ -32,15 +31,26 @@ def _make_config(
     multiplier: float | None,
     clarity_threshold: float | None,
 ):
-    if strategy == "uniform_swing":
-        return UniformSwingConfig(polls_window_days=polls_window_days)
-    if strategy == "reform_threat_consolidation":
-        return ReformThreatConfig(
-            polls_window_days=polls_window_days,
-            multiplier=multiplier if multiplier is not None else 1.0,
-            clarity_threshold=clarity_threshold if clarity_threshold is not None else 5.0,
-        )
-    raise click.ClickException(f"unknown strategy: {strategy}")
+    """Build a ScenarioConfig for the named strategy.
+
+    Discovers the config class via STRATEGY_REGISTRY rather than hard-coding strategy
+    names. Any future strategy registered via @register is automatically supported,
+    provided its config fields match a subset of the CLI's candidate kwargs (or the
+    strategy's defaults cover them). The candidate kwargs map CLI flag names →
+    ScenarioConfig field names; only those present on the chosen config_schema are
+    forwarded, so passing --multiplier to uniform_swing won't error.
+    """
+    if strategy not in STRATEGY_REGISTRY:
+        raise click.ClickException(f"unknown strategy: {strategy}")
+    config_cls = STRATEGY_REGISTRY[strategy].config_schema
+    candidates = {
+        "polls_window_days": polls_window_days,
+        "multiplier": multiplier,
+        "clarity_threshold": clarity_threshold,
+    }
+    fields = set(config_cls.model_fields)
+    kwargs = {k: v for k, v in candidates.items() if k in fields and v is not None}
+    return config_cls(**kwargs)
 
 
 @main.command("run")
