@@ -27,7 +27,7 @@ def list_strategies_cmd():
 def _make_config(
     strategy: str,
     *,
-    polls_window_days: int,
+    polls_window_days: int | None,
     multiplier: float | None,
     clarity_threshold: float | None,
 ):
@@ -60,7 +60,9 @@ def _make_config(
 @click.option("--label", type=str, default="baseline")
 @click.option("--multiplier", type=float, default=None)
 @click.option("--clarity-threshold", type=float, default=None)
-@click.option("--polls-window-days", type=int, default=14)
+# polls-window-days defaults to None so unspecified flag delegates to the strategy's
+# config_schema default via _make_config's `v is not None` filter.
+@click.option("--polls-window-days", type=int, default=None)
 def run_cmd(
     snapshot: Path,
     strategy: str,
@@ -68,7 +70,7 @@ def run_cmd(
     label: str,
     multiplier: float | None,
     clarity_threshold: float | None,
-    polls_window_days: int,
+    polls_window_days: int | None,
 ) -> None:
     cfg = _make_config(
         strategy,
@@ -92,16 +94,20 @@ def run_cmd(
 @click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path), required=True)
 @click.option("--label-prefix", type=str, default="swp")
 @click.option("--multiplier", type=str, required=True, help="Comma-separated, e.g. 0.5,1.0,1.5")
-@click.option("--clarity-threshold", type=float, default=5.0)
-@click.option("--polls-window-days", type=int, default=14)
+# clarity-threshold and polls-window-days default to None so unspecified flags delegate
+# to the strategy's config_schema defaults via _make_config's `v is not None` filter
+# (matches run_cmd's pattern; future model-default changes flow through both commands
+# without code changes).
+@click.option("--clarity-threshold", type=float, default=None)
+@click.option("--polls-window-days", type=int, default=None)
 def sweep_cmd(
     snapshot: Path,
     strategy: str,
     out_dir: Path,
     label_prefix: str,
     multiplier: str,
-    clarity_threshold: float,
-    polls_window_days: int,
+    clarity_threshold: float | None,
+    polls_window_days: int | None,
 ) -> None:
     multipliers = [float(x.strip()) for x in multiplier.split(",")]
     for m in multipliers:
