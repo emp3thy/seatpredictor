@@ -105,6 +105,11 @@ def test_write_prediction_db_round_trip(tmp_path: Path):
     cfg_back = read_prediction_config(out)
     assert cfg_back.run_id == cfg.run_id
     assert cfg_back.scenario_config_json == cfg.scenario_config_json
+    # datetime + date round-trip: SQLite stores ISO strings, pandas reads strings,
+    # Pydantic v2 coerces back. Locking this contract keeps Task 11's runner stable
+    # if pandas / SQLite type-affinity behaviour ever shifts.
+    assert cfg_back.generated_at == cfg.generated_at
+    assert cfg_back.snapshot_as_of_date == cfg.snapshot_as_of_date
 
     notes_back = read_prediction_notes_index(out)
     # TST1 has 1 flag, TST2 has none → 1 row total
@@ -122,6 +127,19 @@ def test_label_slug_validation(tmp_path: Path):
             config_hash="cfg789",
             label="bad label/with slashes",
         )
+
+
+def test_label_slug_accepts_underscore_and_hyphen(tmp_path: Path):
+    """Sweep labels in real use look like `sweep_m1p25` or `v2-final`. Regression
+    guard against an over-tightening of the label regex."""
+    out = prediction_filename(
+        out_dir=tmp_path,
+        snapshot_content_hash="abc123",
+        strategy="uniform_swing",
+        config_hash="cfg789",
+        label="sweep_m1p25-v2",
+    )
+    assert out.name == "abc123__uniform_swing__cfg789__sweep_m1p25-v2.sqlite"
 
 
 def test_label_slug_rejects_empty_string(tmp_path: Path):
