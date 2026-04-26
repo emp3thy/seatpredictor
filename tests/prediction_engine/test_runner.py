@@ -75,3 +75,19 @@ def test_run_prediction_unknown_strategy_raises(tiny_snapshot_path, tmp_path: Pa
             out_dir=tmp_path,
             label="baseline",
         )
+
+
+def test_run_prediction_rejects_cross_strategy_config(tiny_snapshot_path, tmp_path: Path):
+    """Pass a ReformThreatConfig to uniform_swing — the runner's
+    config_schema.model_validate(scenario.model_dump()) round-trip should reject the
+    extra `multiplier`/`clarity_threshold` fields per ScenarioConfig's extra='forbid'."""
+    from pydantic import ValidationError
+    from schema.prediction import ReformThreatConfig
+    with pytest.raises(ValidationError):
+        run_prediction(
+            snapshot_path=tiny_snapshot_path,
+            strategy_name="uniform_swing",
+            scenario=ReformThreatConfig(multiplier=1.5),
+            out_dir=tmp_path,
+            label="baseline",
+        )

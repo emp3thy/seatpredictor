@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from schema.common import PartyCode, Nation
 
 
@@ -16,8 +16,14 @@ ALLOWED_NOTE_FLAGS = frozenset({
 
 
 class ScenarioConfig(BaseModel):
-    """Base for strategy-specific knobs. Subclasses add their own fields."""
-    pass
+    """Base for strategy-specific knobs. Subclasses add their own fields.
+
+    extra='forbid' propagates to subclasses: if the runner re-validates a
+    ReformThreatConfig against UniformSwingConfig (cross-strategy mismatch),
+    the extra fields (multiplier, clarity_threshold) raise ValidationError
+    instead of being silently dropped by Pydantic v2's default extra='ignore'.
+    """
+    model_config = ConfigDict(extra="forbid")
 
 
 class UniformSwingConfig(ScenarioConfig):
