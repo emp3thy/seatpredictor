@@ -80,11 +80,18 @@ def _add_winner_and_metadata(per_seat: pd.DataFrame) -> pd.DataFrame:
     )
     per_seat["predicted_margin"] = sorted_shares.iloc[:, 0] - sorted_shares.iloc[:, 1]
 
-    leaders = per_seat.loc[:, raw_cols].idxmax(axis=1).str.replace("share_raw_", "", regex=False)
-    per_seat["leader"] = leaders.values
+    # `leader` is fill-if-absent so reform_threat's per-seat _argmax-derived value is
+    # preserved. _argmax and idxmax use different tie-breaks: _argmax is `(share, -ord(first_char))`
+    # (alphabetically earlier first-char wins on ties), idxmax is column iteration order
+    # (PartyCode declaration). Reform_threat used _argmax to drive branching decisions
+    # (non_reform_leader, etc.); overwriting `leader` with idxmax could disagree on ties
+    # and report a `leader` that didn't actually drive the prediction.
+    if "leader" not in per_seat.columns:
+        leaders = per_seat.loc[:, raw_cols].idxmax(axis=1).str.replace("share_raw_", "", regex=False)
+        per_seat["leader"] = leaders.values
 
-    # Only fill metadata columns if absent — reform_threat strategy populates them per-seat
-    # before calling this helper.
+    # Other metadata columns: also fill-if-absent. reform_threat populates these per-seat;
+    # uniform_swing leaves them unset and the helper writes the defaults here.
     for col, default in (
         ("consolidator", None),
         ("clarity", None),
