@@ -208,3 +208,60 @@ def test_write_bias_json_roundtrips(tmp_path):
     assert j["aggregate"]["bias_pp"] == pytest.approx(18.0)
     assert j["aggregate"]["recommended_reform_polling_correction_pp"] == pytest.approx(18.0)
     assert len(j["per_event"]) == 1
+
+
+def test_compute_reform_bias_skips_window_with_only_nan_reform_polls():
+    """If polls in the window all have NaN for reform, the event is treated
+    the same as no-polls-in-window: bias_pp=None, excluded from aggregate."""
+    import math
+    snapshot = _StubSnapshot(
+        polls=_polls_df([
+            ("YouGov", "2025-04-25", "2025-04-27", "2025-04-28", 1500, "GB",
+             20.0, 25.0, 12.0, math.nan, 8.0, 3.0, 1.0, 31.0),  # reform=NaN
+        ]),
+        byelections_events=_byelections_events_df([
+            ("e1", "E1", "2025-05-01", "westminster_byelection",
+             "england", "North West", "reform", False, ""),
+        ]),
+        byelections_results=_byelections_results_df([
+            ("e1", "reform", 12000, 30.0, 18.0),
+        ]),
+    )
+    result = compute_reform_bias(snapshot, local_elections=None)
+    assert result.n_events_used == 1
+    # The all-NaN window must be treated as no-polls; aggregate becomes 0.0 (no eligible events).
+    assert result.n_events_with_polls == 0
+    assert result.aggregate_bias_pp == 0.0
+    e = result.per_event[0]
+    assert e["bias_pp"] is None
+    assert e["poll_mean_share_pp"] is None
+
+
+def test_compute_reform_bias_skips_byelection_where_reform_did_not_stand():
+    """If a by-election's results have no Reform row, the event is recorded
+    with actual_share_pp=None and bias_pp=None — excluded from the aggregate.
+    Otherwise we'd treat 'Reform didn't stand' as 'Reform got 0%' and inject
+    a spurious large-negative bias."""
+    snapshot = _StubSnapshot(
+        polls=_polls_df([
+            ("YouGov", "2025-04-25", "2025-04-27", "2025-04-28", 1500, "GB",
+             20.0, 25.0, 12.0, 12.0, 8.0, 3.0, 1.0, 19.0),
+        ]),
+        byelections_events=_byelections_events_df([
+            ("no_reform_event", "Some by-election", "2025-05-01",
+             "westminster_byelection", "england", "North West", "reform", False, ""),
+        ]),
+        byelections_results=_byelections_results_df([
+            # Lab + Con only; no Reform row at all
+            ("no_reform_event", "lab",    8000, 50.0, 45.0),
+            ("no_reform_event", "con",    7000, 43.0, 30.0),
+            ("no_reform_event", "other",  1100,  7.0, 25.0),
+        ]),
+    )
+    result = compute_reform_bias(snapshot, local_elections=None)
+    assert result.n_events_used == 1
+    assert result.n_events_with_polls == 0   # Excluded from aggregate
+    assert result.aggregate_bias_pp == 0.0
+    e = result.per_event[0]
+    assert e["actual_share_pp"] is None
+    assert e["bias_pp"] is None

@@ -39,7 +39,7 @@ def _normalise_pollster(name: str) -> str:
 
 def _final_week_polls(polls: pd.DataFrame, event_date: date,
                       window_days: int = FINAL_WEEK_WINDOW_DAYS) -> pd.DataFrame:
-    """GB polls published in [event_date - window_days, event_date - 1]."""
+    """GB polls published in [event_date - window_days, event_date - 1] with non-NaN reform."""
     if polls.empty:
         return polls
     lo = (event_date - timedelta(days=window_days)).isoformat()
@@ -48,13 +48,16 @@ def _final_week_polls(polls: pd.DataFrame, event_date: date,
         (polls["geography"] == "GB")
         & (polls["published_date"] >= lo)
         & (polls["published_date"] <= hi)
+        & polls["reform"].notna()
     )
     return polls.loc[mask]
 
 
 def _event_actual_reform(by_event_id: str | None, by_results: pd.DataFrame,
-                          local: LocalElectionEvent | None) -> tuple[float, str | None]:
-    """Return (actual_reform_share_pp, source_descriptor) for one event."""
+                          local: LocalElectionEvent | None) -> tuple[float | None, str | None]:
+    """Return (actual_reform_share_pp, source_descriptor) for one event.
+    Returns (None, None) for by-elections where Reform didn't stand (no row in
+    by_results for party='reform') — caller must handle and exclude from aggregate."""
     if local is not None:
         share = float(local.consolidated_shares.get("reform", 0.0))
         return share, local.consolidated_method
@@ -65,7 +68,7 @@ def _event_actual_reform(by_event_id: str | None, by_results: pd.DataFrame,
         raise ValueError(f"no by-election results for event_id={by_event_id}")
     reform_rows = rows.loc[rows["party"] == "reform"]
     if reform_rows.empty:
-        return 0.0, None
+        return None, None
     return float(reform_rows["actual_share"].iloc[0]), None
 
 
@@ -98,6 +101,17 @@ def compute_reform_bias(
         event_id = str(row["event_id"])
         event_date = date.fromisoformat(str(row["date"]))
         actual_reform, _ = _event_actual_reform(event_id, by_results, None)
+        if actual_reform is None:
+            # Reform didn't stand — record descriptively, exclude from aggregate.
+            per_event_rows.append({
+                "event_id": event_id, "type": "by_election",
+                "date": event_date.isoformat(),
+                "actual_share_pp": None, "actual_source": None,
+                "poll_mean_share_pp": None, "bias_pp": None,
+                "weight": weights["by_election"],
+                "n_polls_in_window": 0, "pollsters_in_window": [],
+            })
+            continue
         window = _final_week_polls(polls, event_date, final_week_window_days)
         if window.empty:
             per_event_rows.append({
