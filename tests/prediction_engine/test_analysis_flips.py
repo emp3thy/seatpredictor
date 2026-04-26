@@ -1,5 +1,4 @@
 from pathlib import Path
-import pandas as pd
 from prediction_engine.runner import run_prediction
 from prediction_engine.analysis.flips import compute_flips
 from schema.prediction import UniformSwingConfig, ReformThreatConfig
