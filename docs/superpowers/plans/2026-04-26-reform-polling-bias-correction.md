@@ -1189,20 +1189,21 @@ def load_local_elections(path: Path) -> list[LocalElectionEvent]:
 
 Expected: ALL 6 tests pass.
 
-- [ ] **Step 5.6: Use the `/add-local-election` skill (Task 4) to seed `data/hand_curated/local_elections.yaml` with the May 2025 entry**
+- [ ] **Step 5.6: Seed `data/hand_curated/local_elections.yaml` with the May 2025 entry**
 
-The skill's procedure: WebFetch BBC, Sky, Britain Elects, and Wikipedia for May 2025 county/unitary elections; collate per-source shares; compute the median; write the YAML.
-
-For reference, the May 2025 county/unitary elections were held on 2025-05-01. As a starting point if WebFetch sources are slow, here is one widely-reported headline PNS (BBC):
+The May 2025 county/unitary elections were held on 2025-05-01. The BBC's Projected National Share (verified during planning, 2026-04-26, against two independent attestations — Elections Etc analysis and Wikipedia, both citing BBC):
 
 - Reform: 30%
 - Lab: 20%
-- Lib Dem: 17%
+- LD: 17%
 - Con: 15%
 - Green: 11%
 - Other: 7%
+- (sums to 100)
 
-**The agent executing this step must run the skill and replace these placeholder values with whatever the live sources publish.** A single-source entry is acceptable if only one source is reachable. Final YAML structure (matching N8 in the cross-task notes):
+These values are stable historical data. Write the YAML directly — no live WebFetch needed. The `/add-local-election` skill is for FUTURE May entries (May 2026 onwards) and for adding additional source attestations (Sky, Britain Elects, etc.) to triangulate this entry later.
+
+Create `data/hand_curated/local_elections.yaml`:
 
 ```yaml
 # UK local-election Projected National Share (PNS) per event.
@@ -1214,14 +1215,16 @@ events:
     name: "May 2025 county and unitary elections"
     pns:
       sources:
-        - source: "BBC News"
-          source_url: "<URL the agent obtained via WebFetch>"
+        - source: "BBC News (via Elections Etc analysis)"
+          source_url: "https://electionsetc.com/2025/05/02/local-elections-2025-summary/"
           shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
-        # Add Sky, Britain Elects, Wikipedia entries here if reachable
+        - source: "BBC News (via Wikipedia)"
+          source_url: "https://en.wikipedia.org/wiki/2025_United_Kingdom_local_elections"
+          shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
       consolidated:
-        method: "sole_source"   # or "median_across_sources" if 2+ sources are listed
+        method: "sole_source"
         shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
-    notes: "Seeded by plan-c bootstrap; verify and extend with additional sources via /add-local-election."
+    notes: "BBC PNS, attested by two independent secondary sources (Elections Etc analysis, Wikipedia). Method is 'sole_source' because both attestations cite the same underlying BBC measurement — they are not independent estimates. To add Sky News or Britain Elects' independently-computed PNS later, use the /add-local-election skill."
 ```
 
 - [ ] **Step 5.7: Validate the seeded YAML loads cleanly**
@@ -1579,7 +1582,7 @@ def compute_reform_bias(
     by_results = snapshot.byelections_results
 
     per_event_rows: list[dict] = []
-    per_pollster_collect: dict[str, list[float]] = {}
+    per_pollster_collect: dict[str, list[tuple[float, float]]] = {}   # name -> [(bias_pp, event_weight), ...]
 
     # Walk by-elections
     for _, row in by_events.iterrows():
@@ -1612,7 +1615,7 @@ def compute_reform_bias(
             pollster_rows = window.loc[window["pollster"] == pollster_name]
             pollster_mean = float(pollster_rows["reform"].mean())
             per_pollster_collect.setdefault(_normalise_pollster(str(pollster_name)), []).append(
-                actual_reform - pollster_mean
+                (actual_reform - pollster_mean, weights["by_election"])
             )
 
     # Walk local elections
@@ -1645,7 +1648,7 @@ def compute_reform_bias(
             pollster_rows = window.loc[window["pollster"] == pollster_name]
             pollster_mean = float(pollster_rows["reform"].mean())
             per_pollster_collect.setdefault(_normalise_pollster(str(pollster_name)), []).append(
-                actual_reform - pollster_mean
+                (actual_reform - pollster_mean, weights["local_election"])
             )
 
     # Aggregate
@@ -1657,11 +1660,16 @@ def compute_reform_bias(
     else:
         aggregate = 0.0
 
+    # Per-pollster: weighted mean using the SAME event weights as the overall aggregate.
+    # This keeps the per-pollster decomposition semantically consistent with the headline
+    # number — both are weighted by event_type.
     per_pollster: dict[str, dict] = {}
-    for name, biases in per_pollster_collect.items():
-        n = len(biases)
+    for name, biases_and_weights in per_pollster_collect.items():
+        n = len(biases_and_weights)
+        num = sum(b * w for b, w in biases_and_weights)
+        den = sum(w for _, w in biases_and_weights)
         per_pollster[name] = {
-            "mean_bias_pp": float(sum(biases) / n),
+            "mean_bias_pp": float(num / den) if den > 0 else 0.0,
             "n_events_with_polls": n,
             "reliability": "high" if n >= 3 else "low",
         }
@@ -1943,17 +1951,20 @@ Expected: `OK — recommended correction: ±X.XX pp` plus event counts.
 
 - [ ] **Step 8.2: Run a real prediction with the recommended correction**
 
-Pick the recommended value from Step 8.1's output (call it `<REC>`). Then run BOTH strategies with the correction applied:
+Capture the recommended value programmatically and run BOTH strategies with it. Single shell sequence so the value can't drift between commands:
 
 ```bash
-SNAP=$(ls -1t data/snapshots/*.sqlite | head -1)
+SNAP=$(ls -1t data/snapshots/*.sqlite | head -1) && \
+REC=$(.venv/Scripts/python.exe -c "import json; print(json.load(open('data/derived/reform_polling_bias.json'))['aggregate']['recommended_reform_polling_correction_pp'])") && \
+echo "Snapshot: $SNAP" && \
+echo "Recommended correction: ${REC}pp" && \
 .venv/Scripts/seatpredict-predict.exe run --snapshot "$SNAP" --strategy uniform_swing \
-    --out-dir data/predictions --label baseline_us_corrected --reform-polling-correction-pp <REC>
+    --out-dir data/predictions --label baseline_us_corrected --reform-polling-correction-pp "$REC" && \
 .venv/Scripts/seatpredict-predict.exe run --snapshot "$SNAP" --strategy reform_threat_consolidation \
-    --out-dir data/predictions --label baseline_rtc_corrected --reform-polling-correction-pp <REC>
+    --out-dir data/predictions --label baseline_rtc_corrected --reform-polling-correction-pp "$REC"
 ```
 
-Expected: each run prints `Prediction at <path>` and the new files appear in `data/predictions/`.
+Expected: each run prints `Prediction at <path>` and the new `*baseline_*_corrected*.sqlite` files appear in `data/predictions/`.
 
 - [ ] **Step 8.3: Verify the correction landed in the prediction's config**
 
@@ -1975,26 +1986,31 @@ print('OK — correction value =', cfg['reform_polling_correction_pp'])
 
 Expected: prints config dict including non-zero `reform_polling_correction_pp`.
 
-- [ ] **Step 8.4: Run the FULL test suite one final time**
+- [ ] **Step 8.4: Run the FULL test suite one final time and capture the count**
 
 ```bash
-.venv/Scripts/python.exe -m pytest -v
+.venv/Scripts/python.exe -m pytest --tb=short 2>&1 | tee /tmp/plan_c_test_run.log | tail -3
 ```
 
-Expected: ALL tests pass. Report numbers in commit message.
+Expected: ALL tests pass. The summary line `===== N passed in X.XXs =====` appears at the bottom; capture N for the next step. If anything fails, abort and inspect — do not proceed to Step 8.5.
+
+```bash
+TEST_COUNT=$(grep -oE '[0-9]+ passed' /tmp/plan_c_test_run.log | head -1 | grep -oE '[0-9]+')
+echo "Total passing tests: $TEST_COUNT"
+```
 
 - [ ] **Step 8.5: Record the implementation completion in better-memory**
 
-Use the `mcp__better-memory__memory_observe` tool with:
+Substitute the captured `$TEST_COUNT` into the observation text below, then call the `mcp__better-memory__memory_observe` tool with:
 
 ```
-content: "Plan-c (reform polling bias correction) is COMPLETE on branch plan-c-reform-bias-correction. New parameter reform_polling_correction_pp on ScenarioConfig (default 0.0) is plumbed through compute_swing into both strategies and exposed via --reform-polling-correction-pp on seatpredict-predict run/sweep. New artifact data/derived/reform_polling_bias.json computed by notebook 05 from snapshot polls + by-elections + new data/hand_curated/local_elections.yaml. New /add-local-election skill in .claude/skills/ codifies the May-each-year PNS curation procedure (BBC/Sky/Britain Elects/Wikipedia, median across sources). All event types weight 1.0 per user direction (by-elections are a behavioural turnout-validation signal). Spec at docs/superpowers/specs/2026-04-26-reform-polling-bias-correction-design.md; plan at docs/superpowers/plans/2026-04-26-reform-polling-bias-correction.md. NN/NN tests pass."
+content: "Plan-c (reform polling bias correction) is COMPLETE on branch plan-c-reform-bias-correction. New parameter reform_polling_correction_pp on ScenarioConfig (default 0.0) is plumbed through compute_swing into both strategies and exposed via --reform-polling-correction-pp on seatpredict-predict run/sweep. New artifact data/derived/reform_polling_bias.json computed by notebook 05 from snapshot polls + by-elections + new data/hand_curated/local_elections.yaml. New /add-local-election skill in .claude/skills/ codifies the May-each-year PNS curation procedure (BBC/Sky/Britain Elects/Wikipedia, median across sources). All event types weight 1.0 per user direction (by-elections are a behavioural turnout-validation signal). Spec at docs/superpowers/specs/2026-04-26-reform-polling-bias-correction-design.md; plan at docs/superpowers/plans/2026-04-26-reform-polling-bias-correction.md. <TEST_COUNT> tests pass."
 component: "prediction_engine"
 theme: "milestone"
 outcome: "success"
 ```
 
-(Replace NN/NN with the actual test count from Step 8.4.)
+(Replace the `<TEST_COUNT>` placeholder with the integer captured in Step 8.4.)
 
 - [ ] **Step 8.6: Commit completion artifacts**
 
