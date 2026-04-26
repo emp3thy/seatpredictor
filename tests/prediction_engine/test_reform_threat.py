@@ -1,10 +1,15 @@
+import json
 import pytest
+import pandas as pd
+from prediction_engine.snapshot_loader import Snapshot
 from prediction_engine.strategies.reform_threat_consolidation import (
     identify_consolidator,
     compute_clarity,
     apply_flows,
+    ReformThreatStrategy,
 )
 from schema.common import PartyCode
+from schema.prediction import ReformThreatConfig
 
 
 def _shares(**overrides) -> dict[PartyCode, float]:
@@ -130,3 +135,118 @@ def test_compute_clarity_rejects_zero_threshold():
     shares = _shares(lab=20.0, ld=10.0)
     with pytest.raises(ValueError, match="threshold must be > 0"):
         compute_clarity(shares, consolidator=PartyCode.LAB, nation="england", threshold=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (Task 9)
+# ---------------------------------------------------------------------------
+
+def _seat(per_seat, ons_code):
+    return per_seat[per_seat["ons_code"] == ons_code].iloc[0]
+
+
+def test_reform_threat_seat_a_clear_consolidation(tiny_snapshot_path):
+    """Seat A (Aldermouth, england, lab consolidator, high clarity) — flow applies."""
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    a = _seat(res.per_seat, "TST00001")
+    assert a["consolidator"] == "lab"
+    assert a["matrix_nation"] == "england"
+    assert json.loads(a["matrix_provenance"]) == ["tst_eng_2025"]
+    assert a["share_predicted_lab"] > a["share_raw_lab"]
+    assert a["share_predicted_ld"] < a["share_raw_ld"]
+
+
+def test_reform_threat_seat_c_non_reform_leader_short_circuits(tiny_snapshot_path):
+    """Seat C has Con leading, not Reform — short-circuit, flag."""
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    c = _seat(res.per_seat, "TST00003")
+    flags = json.loads(c["notes"])
+    assert "non_reform_leader" in flags
+    assert c["share_predicted_con"] == pytest.approx(c["share_raw_con"], abs=1e-9)
+    assert pd.isna(c["consolidator"])
+
+
+def test_reform_threat_seat_d_wales_plaid_consolidator(tiny_snapshot_path):
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    d = _seat(res.per_seat, "TST00004")
+    assert d["consolidator"] == "plaid"
+    assert d["matrix_nation"] == "wales"
+    assert d["share_predicted_plaid"] > d["share_raw_plaid"]
+
+
+def test_reform_threat_seat_e_scotland_no_matrix(tiny_snapshot_path):
+    """Seat E — SNP would be the consolidator, but Scotland has no matrix entry → matrix_unavailable."""
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    e = _seat(res.per_seat, "TST00005")
+    flags = json.loads(e["notes"])
+    assert "matrix_unavailable" in flags
+    assert e["share_predicted_snp"] == pytest.approx(e["share_raw_snp"], abs=1e-9)
+    # Per spec §5.3 step 5: clarity computed BEFORE matrix-availability check, so it survives.
+    assert e["consolidator"] == "snp"
+    assert e["clarity"] is not None and not pd.isna(e["clarity"])
+
+
+def test_reform_threat_seat_f_ni_excluded(tiny_snapshot_path):
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    f = _seat(res.per_seat, "TST00006")
+    flags = json.loads(f["notes"])
+    assert "ni_excluded" in flags
+    assert f["share_predicted_other"] == pytest.approx(f["share_raw_other"], abs=1e-9)
+
+
+def test_reform_threat_low_clarity_flag(tiny_snapshot_path):
+    """Seat B (Bramford): Lab/LD near-tied (gap=2pp) → low_clarity at default threshold=5pp."""
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    b = _seat(res.per_seat, "TST00002")
+    flags = json.loads(b["notes"])
+    assert "low_clarity" in flags
+    assert b["consolidator"] == "lab"
+
+
+def test_reform_threat_multiplier_monotone(tiny_snapshot_path):
+    """Seat A: with weight 0.6 for LD, raising multiplier from 0.5 → 1.5 must move ≥ as much LD share."""
+    snap = Snapshot(tiny_snapshot_path)
+    moves: list[float] = []
+    for m in (0.5, 1.0, 1.5):
+        res = ReformThreatStrategy().predict(snap, ReformThreatConfig(multiplier=m))
+        a = _seat(res.per_seat, "TST00001")
+        moves.append(a["share_raw_ld"] - a["share_predicted_ld"])
+    assert moves[0] <= moves[1] <= moves[2] + 1e-9
+
+
+def test_reform_threat_determinism(tiny_snapshot_path):
+    snap = Snapshot(tiny_snapshot_path)
+    a = ReformThreatStrategy().predict(snap, ReformThreatConfig()).per_seat
+    b = ReformThreatStrategy().predict(snap, ReformThreatConfig()).per_seat
+    a_sorted = a.sort_values("ons_code").reset_index(drop=True)
+    b_sorted = b.sort_values("ons_code").reset_index(drop=True)
+    assert a_sorted.equals(b_sorted)
+
+
+def test_reform_threat_shares_sum_to_100_per_seat(tiny_snapshot_path):
+    snap = Snapshot(tiny_snapshot_path)
+    res = ReformThreatStrategy().predict(snap, ReformThreatConfig())
+    cols = [f"share_predicted_{p.value}" for p in PartyCode]
+    sums = res.per_seat[cols].sum(axis=1)
+    for s in sums:
+        assert s == pytest.approx(100.0, abs=1e-6)
+
+
+def test_reform_threat_consolidator_already_leads_unit():
+    """Hand-built shares unit test for the consolidator_already_leads guard.
+    The path is reachable only at exact share ties between Reform and a left-bloc party.
+    """
+    raw_shares = {p: 0.0 for p in PartyCode}
+    raw_shares[PartyCode.REFORM] = 35.0
+    raw_shares[PartyCode.LAB]    = 35.0
+    raw_shares[PartyCode.LD]     = 10.0
+    raw_shares[PartyCode.OTHER]  = 20.0
+    consolidator = identify_consolidator(raw_shares, nation="england")
+    assert consolidator == PartyCode.LAB
+    assert raw_shares[consolidator] >= raw_shares[PartyCode.REFORM]

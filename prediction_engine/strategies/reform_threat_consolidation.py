@@ -1,7 +1,20 @@
-"""Reform-threat consolidation strategy. Helpers in this module; full Strategy in Task 9."""
+"""Reform-threat consolidation strategy."""
+import json
 import logging
 
+import pandas as pd
+
+from prediction_engine.polls import compute_swing
+from prediction_engine.projection import project_raw_shares
+from prediction_engine.snapshot_loader import Snapshot
+from prediction_engine.strategies.base import Strategy, register
+from prediction_engine.strategies.uniform_swing import (
+    PredictionResult,
+    _add_winner_and_metadata,
+    _compute_national_totals,
+)
 from schema.common import LEFT_BLOC, Nation, PartyCode
+from schema.prediction import ReformThreatConfig
 
 logger = logging.getLogger(__name__)
 
@@ -79,3 +92,171 @@ def apply_flows(
             source.value, consolidator.value, moved, wanted,
         )
     return out
+
+
+@register("reform_threat_consolidation")
+class ReformThreatStrategy(Strategy):
+    name = "reform_threat_consolidation"
+    config_schema = ReformThreatConfig
+
+    def predict(self, snapshot: Snapshot, scenario: ReformThreatConfig) -> PredictionResult:
+        gb_swing = compute_swing(
+            snapshot.polls,
+            snapshot.results_2024,
+            as_of=snapshot.manifest.as_of_date,
+            window_days=scenario.polls_window_days,
+            geography="GB",
+        )
+        per_seat = project_raw_shares(snapshot.results_2024, {"GB": gb_swing})
+
+        # Initialise tactical-output columns to uniform-swing defaults; the per-seat loop
+        # may override them.
+        for p in PartyCode:
+            per_seat[f"share_predicted_{p.value}"] = per_seat[f"share_raw_{p.value}"]
+        per_seat["consolidator"]      = None
+        per_seat["clarity"]           = None
+        per_seat["matrix_nation"]     = None
+        per_seat["matrix_provenance"] = "[]"
+        per_seat["notes"]             = "[]"
+
+        rows: list[dict] = []
+        for _, row in per_seat.sort_values(by="ons_code").iterrows():
+            updated = _predict_seat(row.to_dict(), snapshot, scenario)
+            rows.append(updated)
+        per_seat = pd.DataFrame(rows)
+
+        per_seat = _add_winner_and_metadata(per_seat)
+        per_seat = per_seat.sort_values(by="ons_code").reset_index(drop=True)
+        national = _compute_national_totals(per_seat)
+
+        return PredictionResult(
+            per_seat=per_seat,
+            national=national,
+            run_metadata={
+                "strategy": self.name,
+                "scenario": scenario.model_dump(mode="json"),
+                "snapshot_id": snapshot.snapshot_id,
+            },
+        )
+
+
+def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -> dict:
+    """Apply the reform-threat algorithm to one seat row. Returns a dict in seats-table
+    schema with per-party share_predicted_* and metadata fields.
+
+    Step ordering (matches spec §5.3 strictly):
+      1. NI short-circuit
+      2. leader != Reform → non_reform_leader fallback
+      3. identify consolidator (None → matrix_unavailable; consolidator >= leader → consolidator_already_leads)
+      4. compute clarity (always, regardless of matrix availability)
+      5. matrix availability check (no consolidator entries → matrix_unavailable, but preserve clarity)
+      6. weights lookup per source (cell missing → no_matrix_entry, source share unchanged)
+      7. apply flows scaled by clarity × multiplier
+      8. re-normalise to 100
+    """
+    nation = row["nation"]
+    flags: list[str] = []
+
+    raw_shares: dict[PartyCode, float] = {p: float(row[f"share_raw_{p.value}"]) for p in PartyCode}
+
+    # 1. NI short-circuit.
+    if nation == "northern_ireland":
+        flags.append("ni_excluded")
+        return _seat_with_flags(row, raw_shares, leader=_argmax(raw_shares),
+                                consolidator=None, clarity=None, matrix_nation=None,
+                                provenance=[], flags=flags)
+
+    # 2. Non-Reform leader fallback.
+    leader = _argmax(raw_shares)
+    if leader != PartyCode.REFORM:
+        flags.append("non_reform_leader")
+        return _seat_with_flags(row, raw_shares, leader=leader,
+                                consolidator=None, clarity=None, matrix_nation=None,
+                                provenance=[], flags=flags)
+
+    # 3. Identify consolidator.
+    consolidator = identify_consolidator(raw_shares, nation=nation)
+    if consolidator is None:
+        flags.append("matrix_unavailable")
+        return _seat_with_flags(row, raw_shares, leader=leader,
+                                consolidator=None, clarity=None, matrix_nation=nation,
+                                provenance=[], flags=flags)
+
+    if raw_shares[consolidator] >= raw_shares[leader]:
+        flags.append("consolidator_already_leads")
+        return _seat_with_flags(row, raw_shares, leader=leader,
+                                consolidator=consolidator, clarity=None,
+                                matrix_nation=nation, provenance=[], flags=flags)
+
+    # 4. Compute clarity. (Spec §5.3 step 4: clarity is always meaningful for an
+    # identified consolidator; it does NOT depend on matrix availability.)
+    clarity = compute_clarity(raw_shares, consolidator, nation, scenario.clarity_threshold)
+    if clarity < 0.5:
+        flags.append("low_clarity")
+
+    # 5. Matrix availability. Preserve consolidator + clarity for analyst inspection.
+    if not snapshot.consolidator_observed(nation, consolidator.value):
+        flags.append("matrix_unavailable")
+        return _seat_with_flags(row, raw_shares, leader=leader,
+                                consolidator=consolidator, clarity=clarity,
+                                matrix_nation=nation, provenance=[], flags=flags)
+
+    # 6. Per-source weight lookup. Missing cells flag once and skip that source.
+    weights: dict[PartyCode, float] = {}
+    for source in PartyCode:
+        if source in (leader, consolidator) or raw_shares[source] <= 0.0:
+            continue
+        w = snapshot.lookup_weight(nation, consolidator.value, source.value)
+        if w is None:
+            if "no_matrix_entry" not in flags:
+                flags.append("no_matrix_entry")
+            continue
+        weights[source] = w
+
+    # 7. Apply flows.
+    new_shares = apply_flows(
+        raw_shares,
+        leader=leader,
+        consolidator=consolidator,
+        weights=weights,
+        clarity=clarity,
+        multiplier=scenario.multiplier,
+        flag_sink=flags,
+    )
+
+    # 8. Re-normalise to 100 (apply_flows preserves total in exact arithmetic; float drift
+    # makes this safe).
+    total = sum(new_shares.values())
+    if total > 0:
+        new_shares = {p: v * 100.0 / total for p, v in new_shares.items()}
+
+    provenance = snapshot.provenance_for_consolidator(nation, consolidator.value)
+    return _seat_with_flags(row, new_shares, leader=leader, consolidator=consolidator,
+                            clarity=clarity, matrix_nation=nation,
+                            provenance=provenance, flags=flags)
+
+
+def _seat_with_flags(
+    row: dict,
+    shares: dict[PartyCode, float],
+    leader: PartyCode,
+    consolidator: PartyCode | None,
+    clarity: float | None,
+    matrix_nation: str | None,
+    provenance: list[str],
+    flags: list[str],
+) -> dict:
+    out = dict(row)
+    for p in PartyCode:
+        out[f"share_predicted_{p.value}"] = shares[p]
+    out["leader"]            = leader.value
+    out["consolidator"]      = consolidator.value if consolidator else None
+    out["clarity"]           = clarity
+    out["matrix_nation"]     = matrix_nation
+    out["matrix_provenance"] = json.dumps(sorted(provenance))
+    out["notes"]             = json.dumps(flags)
+    return out
+
+
+def _argmax(shares: dict[PartyCode, float]) -> PartyCode:
+    return max(shares, key=lambda p: (shares[p], -ord(p.value[0])))
