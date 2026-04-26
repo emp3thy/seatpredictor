@@ -25,6 +25,14 @@ class ScenarioConfig(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
+    # Pollster bias correction. Positive value bumps Reform's projected national
+    # swing up by this many percentage points (interpretation: pollsters under-
+    # state Reform). Negative value pulls Reform down. Default 0.0 is a no-op so
+    # existing predictions and existing prediction files are unaffected. The
+    # recommended value is computed by notebook 05 from real electoral events
+    # and persisted to data/derived/reform_polling_bias.json.
+    reform_polling_correction_pp: float = Field(default=0.0)
+
 
 class UniformSwingConfig(ScenarioConfig):
     polls_window_days: int = Field(default=14, gt=0)
