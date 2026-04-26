@@ -2,8 +2,6 @@ import warnings
 from datetime import date
 from pathlib import Path
 
-import pytest
-
 from data_engine.sources.local_elections import load_local_elections, LocalElectionEvent
 
 
