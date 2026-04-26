@@ -238,15 +238,15 @@ If no polls fall in the window for an event, record `n_polls: 0` and exclude tha
 
 ### 5.2 Per-event weights
 
-By-elections and local elections do not contribute equally:
+All event types are weighted equally in v1:
 
 | Event type | Weight | Reasoning |
 |---|---|---|
-| GE | (no GE events post-snapshot — N/A for v1) | — |
-| Local election | 1.0 | PNS is a national-equivalent estimate; sample-frame matches the polls. |
-| By-election | 0.25 | Single constituency vs national poll — conflates polling bias with sampling-frame mismatch. Down-weighted but kept (descriptive value). |
+| GE | 1.0 | Direct national-scale validation. (No GE events post-snapshot — N/A for v1.) |
+| Local election | 1.0 | PNS is a national-equivalent estimate aggregated across many wards; large effective sample. |
+| By-election | 1.0 | A real-world turnout test: polls measure stated intention; by-elections measure whether people actually show up to vote for Reform. This is a distinct signal that polls cannot replicate, and the apparent "noise" of polled-Reform vs actual-Reform at one constituency is partly the very turnout effect we want to capture in the bias estimate. |
 
-These weights are constants in v1, exposed in the JSON's `method` block so the user can see them and (later) override.
+Weights are constants in v1, exposed in the JSON's `method` block so the user can override later if a particular event type proves to systematically distort the aggregate.
 
 ### 5.3 Aggregation
 
@@ -284,7 +284,7 @@ per_pollster[p].reliability = "high" if n_events_with_polls >= 3 else "low"
     "weights": {
       "ge": 1.0,
       "local_election": 1.0,
-      "by_election": 0.25
+      "by_election": 1.0
     }
   },
   "events_used": 5,
@@ -308,7 +308,7 @@ per_pollster[p].reliability = "high" if n_events_with_polls >= 3 else "low"
     {"event_id": "runcorn_helsby_2025", "type": "by_election",
      "date": "2025-05-01", "actual_share_pp": 38.7,
      "poll_mean_share_pp": 14.5, "bias_pp": 24.2,
-     "weight": 0.25, "n_polls_in_window": 6,
+     "weight": 1.0, "n_polls_in_window": 6,
      "pollsters_in_window": ["yougov", "opinium"]},
     ...
   ]
@@ -524,9 +524,9 @@ For this spec to be considered done:
 
 ## 12. Risks & open questions
 
-### 12.1 By-election weight is a judgement call
+### 12.1 By-election weight: equal to local elections
 
-`0.25` is a guess. Lower = bias is dominated by local elections (we have only 1-2 of those); higher = by-election noise leaks into the aggregate. The weight is exposed in the JSON `method` block and easily revisitable. v1 leaves it at 0.25; if results look obviously dominated by one event type, it can be tuned.
+By-elections are weighted at `1.0` (same as local elections), per the §5.2 reasoning: by-elections are a behavioural validation signal that polls cannot replicate, and the apparent gap between national-poll Reform and by-election Reform is partly the very turnout effect we want to capture. The weight is exposed in the JSON `method` block; if specific events later prove to skew the aggregate (for example, a by-election in an outlier constituency), individual events can be re-weighted manually rather than reverting to a blanket down-weight.
 
 ### 12.2 Pre-event poll window
 
