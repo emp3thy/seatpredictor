@@ -89,3 +89,34 @@ def test_run_unknown_strategy_exits_nonzero(tiny_snapshot_path, tmp_path: Path):
         "--label", "test",
     ])
     assert res.exit_code != 0
+
+
+def test_run_cli_accepts_reform_polling_correction_pp(tmp_path, tiny_snapshot_path, monkeypatch):
+    """`seatpredict-predict run --reform-polling-correction-pp 2.5` must:
+    1. Accept the flag without erroring.
+    2. Persist the value into the prediction file's scenario_config_json.
+    """
+    import json
+    import sqlite3
+    from contextlib import closing
+    from click.testing import CliRunner
+    from prediction_engine.cli import main
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    out_dir = tmp_path / "preds"
+    out_dir.mkdir()
+    result = runner.invoke(main, [
+        "run",
+        "--snapshot", str(tiny_snapshot_path),
+        "--strategy", "uniform_swing",
+        "--out-dir", str(out_dir),
+        "--label", "test_corr",
+        "--reform-polling-correction-pp", "2.5",
+    ])
+    assert result.exit_code == 0, result.output
+    pred_files = list(out_dir.glob("*.sqlite"))
+    assert len(pred_files) == 1
+    with closing(sqlite3.connect(str(pred_files[0]))) as conn:
+        row = conn.execute("SELECT scenario_config_json FROM config").fetchone()
+    cfg = json.loads(row[0])
+    assert cfg["reform_polling_correction_pp"] == 2.5

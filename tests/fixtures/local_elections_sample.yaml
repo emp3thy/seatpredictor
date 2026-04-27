@@ -1,0 +1,27 @@
+events:
+  - date: 2025-05-01
+    name: "Sample event A — two sources, median"
+    pns:
+      sources:
+        - source: "BBC"
+          source_url: "https://example.test/bbc"
+          shares: { con: 16.0, lab: 22.0, ld: 18.0, reform: 28.0, green: 10.0, other: 6.0 }
+        - source: "Sky"
+          source_url: "https://example.test/sky"
+          shares: { con: 14.0, lab: 18.0, ld: 16.0, reform: 32.0, green: 12.0, other: 8.0 }
+      consolidated:
+        method: "median_across_sources"
+        shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
+    notes: "Two-source fixture; consolidated values are the per-party median."
+
+  - date: 2026-05-07
+    name: "Sample event B — sole source"
+    pns:
+      sources:
+        - source: "BBC"
+          source_url: "https://example.test/bbc-2"
+          shares: { con: 20.0, lab: 25.0, ld: 15.0, reform: 25.0, green: 8.0, other: 7.0 }
+      consolidated:
+        method: "sole_source"
+        shares: { con: 20.0, lab: 25.0, ld: 15.0, reform: 25.0, green: 8.0, other: 7.0 }
+    notes: "Sole-source fixture for the no-reconciliation path."

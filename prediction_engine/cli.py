@@ -30,6 +30,7 @@ def _make_config(
     polls_window_days: int | None,
     multiplier: float | None,
     clarity_threshold: float | None,
+    reform_polling_correction_pp: float | None,
 ):
     """Build a ScenarioConfig for the named strategy.
 
@@ -47,6 +48,7 @@ def _make_config(
         "polls_window_days": polls_window_days,
         "multiplier": multiplier,
         "clarity_threshold": clarity_threshold,
+        "reform_polling_correction_pp": reform_polling_correction_pp,
     }
     fields = set(config_cls.model_fields)
     kwargs = {k: v for k, v in candidates.items() if k in fields and v is not None}
@@ -63,6 +65,9 @@ def _make_config(
 # polls-window-days defaults to None so unspecified flag delegates to the strategy's
 # config_schema default via _make_config's `v is not None` filter.
 @click.option("--polls-window-days", type=int, default=None)
+@click.option("--reform-polling-correction-pp", type=float, default=None,
+              help="Pollster bias correction in pp (positive = pollsters under-state Reform). "
+                   "Recommended value is in data/derived/reform_polling_bias.json.")
 def run_cmd(
     snapshot: Path,
     strategy: str,
@@ -71,12 +76,14 @@ def run_cmd(
     multiplier: float | None,
     clarity_threshold: float | None,
     polls_window_days: int | None,
+    reform_polling_correction_pp: float | None,
 ) -> None:
     cfg = _make_config(
         strategy,
         polls_window_days=polls_window_days,
         multiplier=multiplier,
         clarity_threshold=clarity_threshold,
+        reform_polling_correction_pp=reform_polling_correction_pp,
     )
     out = run_prediction(
         snapshot_path=snapshot,
@@ -100,6 +107,8 @@ def run_cmd(
 # without code changes).
 @click.option("--clarity-threshold", type=float, default=None)
 @click.option("--polls-window-days", type=int, default=None)
+@click.option("--reform-polling-correction-pp", type=float, default=None,
+              help="Constant pollster bias correction applied to every sweep point.")
 def sweep_cmd(
     snapshot: Path,
     strategy: str,
@@ -108,6 +117,7 @@ def sweep_cmd(
     multiplier: str,
     clarity_threshold: float | None,
     polls_window_days: int | None,
+    reform_polling_correction_pp: float | None,
 ) -> None:
     multipliers = [float(x.strip()) for x in multiplier.split(",")]
     for m in multipliers:
@@ -116,6 +126,7 @@ def sweep_cmd(
             polls_window_days=polls_window_days,
             multiplier=m,
             clarity_threshold=clarity_threshold,
+            reform_polling_correction_pp=reform_polling_correction_pp,
         )
         label = f"{label_prefix}_m{m:.2f}".replace(".", "p")
         out = run_prediction(

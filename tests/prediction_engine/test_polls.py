@@ -123,3 +123,46 @@ def test_compute_swing_filters_geography():
     results = _results_2024_df()
     with pytest.raises(ValueError, match="no polls in window"):
         compute_swing(polls, results, as_of=date(2026, 4, 25), window_days=14, geography="Wales")
+
+
+def test_compute_swing_default_correction_is_no_op():
+    """Default reform_polling_correction_pp=0.0 produces the same swing as before."""
+    polls = _polls_df_simple()
+    results = _results_2024_df()
+    swing_no_arg = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                  window_days=14, geography="GB")
+    swing_zero = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                window_days=14, geography="GB",
+                                reform_polling_correction_pp=0.0)
+    for p in PartyCode:
+        assert swing_no_arg[p] == pytest.approx(swing_zero[p])
+
+
+def test_compute_swing_positive_correction_bumps_reform():
+    """+2.5 correction adds 2.5 to Reform's swing; other parties unchanged."""
+    polls = _polls_df_simple()
+    results = _results_2024_df()
+    swing_base = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                window_days=14, geography="GB")
+    swing_corr = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                window_days=14, geography="GB",
+                                reform_polling_correction_pp=2.5)
+    assert swing_corr[PartyCode.REFORM] == pytest.approx(swing_base[PartyCode.REFORM] + 2.5)
+    # All other parties' swings unchanged in compute_swing — the per-seat
+    # renormalisation in project_raw_shares handles the redistribution.
+    for p in PartyCode:
+        if p is PartyCode.REFORM:
+            continue
+        assert swing_corr[p] == pytest.approx(swing_base[p])
+
+
+def test_compute_swing_negative_correction_pulls_reform_down():
+    """Negative correction subtracts from Reform's swing."""
+    polls = _polls_df_simple()
+    results = _results_2024_df()
+    swing_base = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                window_days=14, geography="GB")
+    swing_corr = compute_swing(polls, results, as_of=date(2026, 4, 25),
+                                window_days=14, geography="GB",
+                                reform_polling_correction_pp=-1.5)
+    assert swing_corr[PartyCode.REFORM] == pytest.approx(swing_base[PartyCode.REFORM] - 1.5)

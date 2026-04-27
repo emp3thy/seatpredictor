@@ -1,0 +1,19 @@
+# UK local-election Projected National Share (PNS) per event.
+# Each event records 1+ source-published PNS plus a consolidated value used by the
+# bias analysis. Curate via the /add-local-election skill each May.
+
+events:
+  - date: 2025-05-01
+    name: "May 2025 county and unitary elections"
+    pns:
+      sources:
+        - source: "BBC News (via Elections Etc analysis)"
+          source_url: "https://electionsetc.com/2025/05/02/local-elections-2025-summary/"
+          shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
+        - source: "BBC News (via Wikipedia)"
+          source_url: "https://en.wikipedia.org/wiki/2025_United_Kingdom_local_elections"
+          shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
+      consolidated:
+        method: "sole_source"
+        shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
+    notes: "BBC PNS, attested by two independent secondary sources (Elections Etc analysis, Wikipedia). Method is 'sole_source' because both attestations cite the same underlying BBC measurement — they are not independent estimates. To add Sky News or Britain Elects' independently-computed PNS later, use the /add-local-election skill."

@@ -10,7 +10,21 @@ from data_engine.sources.wikipedia_polls import POLLS_URL, fetch_polls_html
 
 
 HOC_URL = "https://researchbriefings.files.parliament.uk/documents/CBP-10009/HoC-GE2024-results-by-constituency.csv"
-USER_AGENT = "seatpredictor/0.0.1 (research)"
+# parliament.uk fronts this CSV with Cloudflare bot management. A bare User-Agent
+# (or an obvious script UA like curl/python-requests) gets a 403 with a JS-challenge
+# HTML body. The full set of browser-navigation headers below is the minimum we've
+# found that's accepted; if Cloudflare tightens further the fetch will fail loud
+# (the content-type check below rejects the HTML interstitial).
+_HOC_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/csv,application/csv,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 def _project_root() -> Path:
@@ -50,9 +64,16 @@ def fetch(refresh: bool):
     hoc_key = cache.key("hoc_results", today)
     if refresh or not cache.exists(hoc_key):
         click.echo(f"Fetching HoC results from {HOC_URL}")
-        with httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=60.0) as client:
+        with httpx.Client(headers=_HOC_HEADERS, timeout=60.0, follow_redirects=True) as client:
             resp = client.get(HOC_URL)
             resp.raise_for_status()
+            ctype = resp.headers.get("content-type", "").lower()
+            if "csv" not in ctype:
+                raise click.ClickException(
+                    f"HoC results URL returned content-type={ctype!r} (expected text/csv); "
+                    "request likely intercepted by Cloudflare bot challenge — request "
+                    "headers may need updating in data_engine/cli.py."
+                )
             cache.put(hoc_key, resp.content, meta={"url": HOC_URL})
     else:
         click.echo(f"HoC results cached for {today}; skipping")

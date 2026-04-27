@@ -110,3 +110,22 @@ def test_uniform_swing_run_metadata_shape(tiny_snapshot_path):
     # scenario must be JSON-serialisable — Task 10 stores it as a JSON string.
     json.dumps(result.run_metadata["scenario"])
     assert result.run_metadata["snapshot_id"] == snap.snapshot_id
+
+
+def test_uniform_swing_honours_reform_polling_correction(tiny_snapshot_path):
+    """+5pp correction lifts Reform's average share_raw across all seats by ~5pp
+    (small deviation possible from per-seat clip+renormalise)."""
+    from prediction_engine.snapshot_loader import Snapshot
+    from prediction_engine.strategies.uniform_swing import UniformSwingStrategy
+    from schema.prediction import UniformSwingConfig
+    snap = Snapshot(tiny_snapshot_path)
+    base = UniformSwingStrategy().predict(snap, UniformSwingConfig()).per_seat
+    corr = UniformSwingStrategy().predict(
+        snap, UniformSwingConfig(reform_polling_correction_pp=5.0)
+    ).per_seat
+    base_reform_mean = base["share_raw_reform"].mean()
+    corr_reform_mean = corr["share_raw_reform"].mean()
+    # +5pp correction; expect ~+4-5pp lift after renormalisation (slightly less
+    # than the raw 5pp because other parties get scaled down proportionally).
+    assert corr_reform_mean - base_reform_mean > 3.0
+    assert corr_reform_mean - base_reform_mean < 5.5

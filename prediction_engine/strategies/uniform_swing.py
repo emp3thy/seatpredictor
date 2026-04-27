@@ -33,6 +33,7 @@ class UniformSwingStrategy(Strategy):
             as_of=snapshot.manifest.as_of_date,
             window_days=scenario.polls_window_days,
             geography="GB",
+            reform_polling_correction_pp=scenario.reform_polling_correction_pp,
         )
         # v1: Wales/Scotland fall back to GB-only swing per spec §11 open question.
         swings = {"GB": gb_swing}

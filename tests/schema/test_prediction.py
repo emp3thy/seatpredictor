@@ -99,3 +99,29 @@ def test_run_config_round_trip():
     raw = rc.model_dump(mode="json")
     restored = RunConfig.model_validate(raw)
     assert restored == rc
+
+
+def test_scenario_config_default_reform_polling_correction_is_zero():
+    """The new field defaults to 0.0 — no-op when callers don't set it."""
+    from schema.prediction import UniformSwingConfig, ReformThreatConfig
+    assert UniformSwingConfig().reform_polling_correction_pp == 0.0
+    assert ReformThreatConfig().reform_polling_correction_pp == 0.0
+
+
+def test_scenario_config_reform_polling_correction_accepts_positive_and_negative():
+    """Positive = pollsters under-state Reform; negative = pollsters over-state.
+    No clamp — caller's choice."""
+    from schema.prediction import UniformSwingConfig, ReformThreatConfig
+    assert UniformSwingConfig(reform_polling_correction_pp=2.5).reform_polling_correction_pp == 2.5
+    assert ReformThreatConfig(reform_polling_correction_pp=-1.0).reform_polling_correction_pp == -1.0
+
+
+def test_scenario_config_reform_polling_correction_round_trips_through_model_dump():
+    """The field appears in model_dump() so RunConfig.scenario_config_json captures it."""
+    from schema.prediction import ReformThreatConfig
+    cfg = ReformThreatConfig(reform_polling_correction_pp=1.5, multiplier=1.0)
+    dumped = cfg.model_dump(mode="json")
+    assert dumped["reform_polling_correction_pp"] == 1.5
+    # Round-trip
+    restored = ReformThreatConfig.model_validate(dumped)
+    assert restored.reform_polling_correction_pp == 1.5

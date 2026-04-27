@@ -1,4 +1,5 @@
 .superpowers/
+.worktrees/
 data/raw_cache/
 data/snapshots/
 data/predictions/
