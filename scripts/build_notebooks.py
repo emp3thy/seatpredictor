@@ -48,9 +48,12 @@ def _pick_prediction(strategy_marker: str, label: str) -> Path:
     or older snapshots' predictions shared the directory."""
     snap_hash = _latest_snapshot_hash()
     pred_dir = Path("data/predictions")
+    # Match label as the trailing __{label}.sqlite suffix, not a substring.
+    # Substring match collided when label='baseline_us' against files like
+    # 'baseline_us_corrected' (introduced by --reform-polling-correction-pp runs).
     matches = [
         p for p in pred_dir.glob(f"{snap_hash}__*{strategy_marker}*.sqlite")
-        if label in p.name
+        if p.name.endswith(f"__{label}.sqlite")
     ]
     if not matches:
         raise FileNotFoundError(
