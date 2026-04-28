@@ -1,8 +1,10 @@
 .superpowers/
 .worktrees/
+.claude/scheduled_tasks.lock
 data/raw_cache/
 data/snapshots/
 data/predictions/
+notebooks/.ipynb_checkpoints/
 __pycache__/
 *.pyc
 .venv/
