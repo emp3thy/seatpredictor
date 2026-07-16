@@ -60,3 +60,14 @@ def test_round_trip_event():
     ev = ByElectionEvent.model_validate(_valid_event())
     restored = ByElectionEvent.model_validate(ev.model_dump(mode="json"))
     assert restored == ev
+
+
+def test_exclude_from_bias_defaults_false_and_is_settable():
+    base = {
+        "event_id": "x", "name": "X", "date": "2026-08-13",
+        "event_type": "westminster_byelection", "nation": "england",
+        "region": "East of England", "threat_party": "reform",
+    }
+    from schema.byelection import ByElectionEvent
+    assert ByElectionEvent.model_validate(base).exclude_from_bias is False
+    assert ByElectionEvent.model_validate({**base, "exclude_from_bias": True}).exclude_from_bias is True

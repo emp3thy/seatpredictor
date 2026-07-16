@@ -57,11 +57,12 @@ class SeatPrediction(BaseModel):
     nation: Nation
     region: str
 
-    # 24 share columns (8 parties × 3 prefixes). Listed explicitly for clarity.
+    # 27 share columns (9 parties × 3 prefixes). Listed explicitly for clarity.
     share_2024_con: float = _share_field()
     share_2024_lab: float = _share_field()
     share_2024_ld: float = _share_field()
     share_2024_reform: float = _share_field()
+    share_2024_restore: float = _share_field()
     share_2024_green: float = _share_field()
     share_2024_snp: float = _share_field()
     share_2024_plaid: float = _share_field()
@@ -71,6 +72,7 @@ class SeatPrediction(BaseModel):
     share_raw_lab: float = _share_field()
     share_raw_ld: float = _share_field()
     share_raw_reform: float = _share_field()
+    share_raw_restore: float = _share_field()
     share_raw_green: float = _share_field()
     share_raw_snp: float = _share_field()
     share_raw_plaid: float = _share_field()
@@ -80,6 +82,7 @@ class SeatPrediction(BaseModel):
     share_predicted_lab: float = _share_field()
     share_predicted_ld: float = _share_field()
     share_predicted_reform: float = _share_field()
+    share_predicted_restore: float = _share_field()
     share_predicted_green: float = _share_field()
     share_predicted_snp: float = _share_field()
     share_predicted_plaid: float = _share_field()

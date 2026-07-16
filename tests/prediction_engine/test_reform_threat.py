@@ -288,3 +288,20 @@ def test_reform_threat_honours_reform_polling_correction(tiny_snapshot_path):
     corr_reform_mean = corr["share_raw_reform"].mean()
     assert corr_reform_mean - base_reform_mean > 3.0
     assert corr_reform_mean - base_reform_mean < 5.5
+
+
+def test_apply_flows_source_iteration_excludes_restore():
+    """_predict_seat must never treat restore as a flow source even if a matrix
+    cell existed: right-of-Reform voters do not consolidate behind the left bloc."""
+    shares = _shares(reform=30.0, lab=25.0, restore=8.0, ld=10.0)
+    out = apply_flows(
+        shares,
+        leader=PartyCode.REFORM,
+        consolidator=PartyCode.LAB,
+        weights={PartyCode.LD: 0.5},  # restore deliberately absent from weights
+        clarity=1.0,
+        multiplier=1.0,
+        flag_sink=[],
+    )
+    assert out[PartyCode.RESTORE] == 8.0  # untouched
+    assert out[PartyCode.LAB] == 30.0     # gained only from LD

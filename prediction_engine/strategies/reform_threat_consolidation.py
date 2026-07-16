@@ -203,9 +203,12 @@ def _predict_seat(row: dict, snapshot: Snapshot, scenario: ReformThreatConfig) -
                                 matrix_nation=nation, provenance=[], flags=flags)
 
     # 6. Per-source weight lookup. Missing cells flag once and skip that source.
+    # Restore is never a source: right of Reform, its voters do not tactically
+    # consolidate behind the left-bloc consolidator (matrix has no restore cells
+    # either — prior_share 0 keeps it below the flow threshold).
     weights: dict[PartyCode, float] = {}
     for source in PartyCode:
-        if source in (leader, consolidator) or raw_shares[source] <= 0.0:
+        if source in (leader, consolidator, PartyCode.RESTORE) or raw_shares[source] <= 0.0:
             continue
         w = snapshot.lookup_weight(nation, consolidator.value, source.value)
         if w is None:

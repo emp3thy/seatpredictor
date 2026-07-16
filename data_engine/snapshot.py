@@ -22,7 +22,7 @@ from data_engine.transforms.transfer_matrix import derive_transfer_matrix
 from schema.snapshot import SnapshotManifest
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 
 @dataclass

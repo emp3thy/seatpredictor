@@ -265,3 +265,53 @@ def test_compute_reform_bias_skips_byelection_where_reform_did_not_stand():
     e = result.per_event[0]
     assert e["actual_share_pp"] is None
     assert e["bias_pp"] is None
+
+
+def test_compute_reform_bias_respects_exclude_from_bias():
+    """An event flagged exclude_from_bias stays in per_event descriptively but
+    contributes nothing to the aggregate or per-pollster stats."""
+    events = _byelections_events_df([
+        ("normal", "Normal event", "2025-05-01", "westminster_byelection",
+         "england", "North West", "reform", False, ""),
+        ("novelty", "Two-candidate novelty race", "2025-05-01", "westminster_byelection",
+         "england", "East of England", "reform", True, ""),
+    ])
+    events["exclude_from_bias"] = [False, True]
+    snapshot = _StubSnapshot(
+        polls=_polls_df([
+            ("YouGov", "2025-04-25", "2025-04-27", "2025-04-28", 1500, "GB",
+             20.0, 25.0, 12.0, 12.0, 8.0, 3.0, 1.0, 19.0),  # reform=12
+        ]),
+        byelections_events=events,
+        byelections_results=_byelections_results_df([
+            ("normal", "reform", 12645, 38.72, 18.10),
+            ("novelty", "reform", 30000, 65.00, 46.00),  # would inject +53pp if counted
+        ]),
+    )
+    result = compute_reform_bias(snapshot, local_elections=None)
+    assert result.n_events_used == 2
+    assert result.n_events_with_polls == 1
+    novelty = next(e for e in result.per_event if e["event_id"] == "novelty")
+    assert novelty["bias_pp"] is None
+    assert novelty["excluded_from_bias"] is True
+    assert result.aggregate_bias_pp == pytest.approx(38.72 - 12.0)
+
+
+def test_compute_reform_bias_tolerates_snapshots_without_exclude_column():
+    """Snapshots built before exclude_from_bias existed lack the column — every
+    event defaults to included."""
+    snapshot = _StubSnapshot(
+        polls=_polls_df([
+            ("YouGov", "2025-04-25", "2025-04-27", "2025-04-28", 1500, "GB",
+             20.0, 25.0, 12.0, 12.0, 8.0, 3.0, 1.0, 19.0),
+        ]),
+        byelections_events=_byelections_events_df([
+            ("runcorn_helsby_2025", "Runcorn", "2025-05-01", "westminster_byelection",
+             "england", "North West", "reform", False, ""),
+        ]),
+        byelections_results=_byelections_results_df([
+            ("runcorn_helsby_2025", "reform", 12645, 38.72, 18.10),
+        ]),
+    )
+    result = compute_reform_bias(snapshot, local_elections=None)
+    assert result.aggregate_bias_pp == pytest.approx(38.72 - 12.0)

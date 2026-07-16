@@ -6,6 +6,11 @@ class PartyCode(str, Enum):
     CON = "con"
     LD = "ld"
     REFORM = "reform"
+    # Restore Britain — formed 2026, right of Reform. No 2024 GE baseline (share_2024
+    # is 0 everywhere); polls give it a national share, so uniform swing spreads it
+    # evenly. Not in LEFT_BLOC; excluded as a tactical-flow source (its voters do not
+    # consolidate behind left-bloc candidates).
+    RESTORE = "restore"
     GREEN = "green"
     SNP = "snp"
     PLAID = "plaid"

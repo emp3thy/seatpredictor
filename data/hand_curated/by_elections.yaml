@@ -2,6 +2,9 @@
 # threat_party: party the tactical consolidation was *against* (typically the polling-frontrunner heading in,
 # even if they didn't win on the day). Set null for events with no clear threat dynamic.
 # exclude_from_matrix: set true for atypical events (e.g. scandal-driven contests) where flows aren't generalisable.
+# exclude_from_bias: set true (default false) to keep an event out of the Reform polling-bias
+# aggregate (notebook 05) — e.g. a two-candidate novelty race where Reform's local share says
+# nothing about national polling accuracy. Independent of exclude_from_matrix.
 
 events:
   - event_id: runcorn_helsby_2025
@@ -73,3 +76,63 @@ events:
       - { party: con,    votes:   650, actual_share:  2.0, prior_share: 12.4 }
       - { party: ld,     votes:   430, actual_share:  1.3, prior_share:  3.3 }
       - { party: other,  votes:   605, actual_share:  1.9, prior_share: 10.5 }
+
+  - event_id: makerfield_2026
+    name: Makerfield by-election
+    date: 2026-06-18
+    event_type: westminster_byelection
+    nation: england
+    region: North West
+    threat_party: reform
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2026_Makerfield_by-election
+    # Anti-Reform tactical consolidation behind Burnham (Greens scaled back campaign).
+    # Restore Britain took 6.8% standing for the first time (prior 0 — party formed 2026).
+    candidates:
+      - { party: lab,     votes: 24927, actual_share: 54.8, prior_share: 45.2 }
+      - { party: reform,  votes: 15696, actual_share: 34.5, prior_share: 31.8 }
+      - { party: restore, votes:  3111, actual_share:  6.8, prior_share:  0.0 }
+      - { party: con,     votes:   997, actual_share:  2.2, prior_share: 10.9 }
+      - { party: green,   votes:   308, actual_share:  0.7, prior_share:  4.4 }
+      - { party: ld,      votes:   163, actual_share:  0.4, prior_share:  6.8 }
+      - { party: other,   votes:   274, actual_share:  0.6, prior_share:  0.9 }
+
+  - event_id: aberdeen_south_2026
+    name: Aberdeen South by-election
+    date: 2026-06-18
+    event_type: westminster_byelection
+    nation: scotland
+    region: North East Scotland
+    threat_party: snp
+    exclude_from_matrix: false
+    narrative_url: https://en.wikipedia.org/wiki/2026_Aberdeen_South_by-election
+    # Unionist consolidation behind Con against SNP (Lumsden urged Reform voters
+    # to back him tactically); SNP hampered by Operation Branchform. Not an
+    # anti-Reform event, so it does not feed the reform_threat matrix.
+    candidates:
+      - { party: con,    votes: 14308, actual_share: 49.5, prior_share: 24.4 }
+      - { party: snp,    votes:  8258, actual_share: 28.6, prior_share: 32.8 }
+      - { party: reform, votes:  2478, actual_share:  8.6, prior_share:  6.9 }
+      - { party: lab,    votes:  1550, actual_share:  5.4, prior_share: 24.7 }
+      - { party: ld,     votes:  1270, actual_share:  4.4, prior_share:  6.3 }
+      - { party: green,  votes:   974, actual_share:  3.4, prior_share:  3.5 }
+      - { party: other,  votes:    59, actual_share:  0.2, prior_share:  1.4 }
+
+  - event_id: arbroath_broughty_ferry_2026
+    name: Arbroath and Broughty Ferry by-election
+    date: 2026-06-18
+    event_type: westminster_byelection
+    nation: scotland
+    region: North East Scotland
+    threat_party: null
+    exclude_from_matrix: true
+    narrative_url: https://en.wikipedia.org/wiki/2026_Arbroath_and_Broughty_Ferry_by-election
+    # Procedural by-election (MP/MSP dual-mandate ban); no clear threat/tactical
+    # dynamic documented, so excluded from the transfer matrix.
+    candidates:
+      - { party: snp,    votes:  9802, actual_share: 41.1, prior_share: 35.3 }
+      - { party: con,    votes:  4524, actual_share: 19.4, prior_share: 15.5 }
+      - { party: reform, votes:  4341, actual_share: 18.2, prior_share:  8.6 }
+      - { party: lab,    votes:  3651, actual_share: 15.3, prior_share: 33.4 }
+      - { party: ld,     votes:  1452, actual_share:  6.1, prior_share:  5.1 }
+      - { party: other,  votes:     0, actual_share:  0.0, prior_share:  2.1 }

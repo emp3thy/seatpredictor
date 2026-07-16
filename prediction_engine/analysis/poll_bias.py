@@ -103,6 +103,19 @@ def compute_reform_bias(
     for _, row in by_events.iterrows():
         event_id = str(row["event_id"])
         event_date = date.fromisoformat(str(row["date"]))
+        # .get: snapshots built before the exclude_from_bias column existed
+        # default to included.
+        if bool(row.get("exclude_from_bias", False)):
+            per_event_rows.append({
+                "event_id": event_id, "type": "by_election",
+                "date": event_date.isoformat(),
+                "actual_share_pp": None, "actual_source": None,
+                "poll_mean_share_pp": None, "bias_pp": None,
+                "weight": weights["by_election"],
+                "n_polls_in_window": 0, "pollsters_in_window": [],
+                "excluded_from_bias": True,
+            })
+            continue
         actual_reform = _byelection_actual_reform(event_id, by_results)
         if actual_reform is None:
             # Reform didn't stand — record descriptively, exclude from aggregate.

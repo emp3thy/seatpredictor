@@ -106,3 +106,15 @@ def test_two_events_average():
     cells, _ = derive_transfer_matrix(events_all, results_all)
     england_lab = cells[(cells["nation"] == "england") & (cells["consolidator"] == "lab")]
     assert set(england_lab["source"]) == {"green", "ld", "con"}
+
+
+def test_restore_never_a_flow_source():
+    """Restore sits right of Reform — even with a large prior share it must not
+    appear as a tactical-flow source in the matrix."""
+    events, results = _fake_byelections()
+    results = pd.concat([results, pd.DataFrame([
+        {"event_id": "caer_test", "party": "restore", "votes": 0,
+         "actual_share": 0.9, "prior_share": 3.2},
+    ])], ignore_index=True)
+    cells, _ = derive_transfer_matrix(events, results)
+    assert len(cells[cells["source"] == "restore"]) == 0

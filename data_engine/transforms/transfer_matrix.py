@@ -96,12 +96,13 @@ def _compute_flows(
     ev_results: pd.DataFrame,
     consolidator: PartyCode,
 ) -> dict[PartyCode, float]:
-    """For each non-Reform, non-consolidator party with prior_share above threshold,
-    compute (prior - actual) / prior, clamped [0, 1]."""
+    """For each non-Reform, non-Restore, non-consolidator party with prior_share above
+    threshold, compute (prior - actual) / prior, clamped [0, 1]. Restore sits right of
+    Reform: its vote is threat-side, not a tactical-consolidation source."""
     flows: dict[PartyCode, float] = {}
     for _, r in ev_results.iterrows():
         party = PartyCode(r["party"])
-        if party == PartyCode.REFORM or party == consolidator:
+        if party in (PartyCode.REFORM, PartyCode.RESTORE) or party == consolidator:
             continue
         prior = float(r["prior_share"])
         actual = float(r["actual_share"])

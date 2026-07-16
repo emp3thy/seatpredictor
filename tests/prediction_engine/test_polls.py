@@ -13,10 +13,10 @@ def _polls_df_simple() -> pd.DataFrame:
     return pd.DataFrame([
         {"pollster": "X", "fieldwork_start": "2026-04-15", "fieldwork_end": "2026-04-17",
          "published_date": "2026-04-18", "sample_size": 1000, "geography": "GB",
-         "con": 22.0, "lab": 30.0, "ld": 12.0, "reform": 20.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 4.0},
+         "con": 22.0, "lab": 30.0, "ld": 12.0, "reform": 20.0, "restore": 0.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 4.0},
         {"pollster": "Y", "fieldwork_start": "2026-04-20", "fieldwork_end": "2026-04-22",
          "published_date": "2026-04-23", "sample_size": 1000, "geography": "GB",
-         "con": 18.0, "lab": 26.0, "ld": 12.0, "reform": 30.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 2.0},
+         "con": 18.0, "lab": 26.0, "ld": 12.0, "reform": 30.0, "restore": 0.0, "green": 8.0, "snp": 3.0, "plaid": 1.0, "other": 2.0},
     ])
 
 
