@@ -51,7 +51,7 @@ def _seat_kwargs() -> dict:
         notes=[],
     )
     for prefix in ("share_2024", "share_raw", "share_predicted"):
-        for p in ["con", "lab", "ld", "reform", "green", "snp", "plaid", "other"]:
+        for p in ["con", "lab", "ld", "reform", "restore", "green", "snp", "plaid", "other"]:
             base[f"{prefix}_{p}"] = 12.5
     return base
 

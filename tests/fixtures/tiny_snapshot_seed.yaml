@@ -7,10 +7,10 @@
 polls:
   - { pollster: TestCo, fieldwork_start: 2026-04-15, fieldwork_end: 2026-04-17,
       published_date: 2026-04-18, sample_size: 1000, geography: GB,
-      con: 17, lab: 24, ld: 9, reform: 29, green: 7, snp: 5, plaid: 6, other: 3 }
+      con: 17, lab: 24, ld: 9, reform: 29, restore: 0, green: 7, snp: 5, plaid: 6, other: 3 }
   - { pollster: TestCo, fieldwork_start: 2026-04-20, fieldwork_end: 2026-04-22,
       published_date: 2026-04-23, sample_size: 1100, geography: GB,
-      con: 17, lab: 24, ld: 9, reform: 29, green: 7, snp: 5, plaid: 6, other: 3 }
+      con: 17, lab: 24, ld: 9, reform: 29, restore: 0, green: 7, snp: 5, plaid: 6, other: 3 }
 
 results_2024:
   # Seat A — England, Reform leader, Lab consolidator, HIGH clarity (Lab-LD gap = 20pp).

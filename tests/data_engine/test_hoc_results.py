@@ -7,8 +7,8 @@ from schema.common import Nation, PartyCode
 def test_parse_produces_one_row_per_constituency_party(fixtures_dir: Path):
     csv_bytes = (fixtures_dir / "hoc_results_sample.csv").read_bytes()
     df = parse_hoc_results(csv_bytes)
-    # 5 constituencies × 8 parties = 40 rows (each party gets a row, share=0 if not present)
-    assert len(df) == 5 * 8
+    # 5 constituencies × 9 parties = 45 rows (each party gets a row, share=0 if not present)
+    assert len(df) == 5 * 9
     # All required columns
     assert set(df.columns) >= {
         "ons_code", "constituency_name", "region", "nation",

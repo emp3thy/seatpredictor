@@ -6,7 +6,8 @@ from schema.common import PartyCode
 
 def rolling_trend(snapshot: Snapshot, window_days: int = 7, geography: str = "GB") -> pd.DataFrame:
     """Return a rolling per-party poll average per published_date.
-    Index: published_date (datetime). Columns: 'con','lab','ld','reform','green','snp','plaid','other'.
+    Index: published_date (datetime). Columns: one per PartyCode value
+    ('con','lab','ld','reform','restore','green','snp','plaid','other').
     """
     polls = snapshot.polls
     polls = polls.loc[polls["geography"] == geography].copy()

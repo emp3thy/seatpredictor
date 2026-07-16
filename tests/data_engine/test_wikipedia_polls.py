@@ -54,6 +54,72 @@ def test_fetch_uses_user_agent_and_returns_text():
     assert "seatpredictor" in sent.headers["User-Agent"]
 
 
+def test_rb_column_parses_as_restore():
+    """Tables with a Restore Britain (RB) column must not lose those shares —
+    RB maps to its own 'restore' column and the row passes the plausible-sum
+    filter (pre-fix the 6pp went missing and the row was dropped)."""
+    html = '''
+    <html><body>
+    <table class="wikitable">
+    <tr><th>Pollster</th><th>Date</th><th>Sample size</th>
+        <th>Lab</th><th>Con</th><th>Ref</th><th>LD</th><th>Grn</th><th>SNP</th><th>PC</th><th>RB</th><th>Others</th></tr>
+    <tr><td>RestoreEraPoll</td><td>1 Jul 2026</td><td>1000</td>
+        <td>20</td><td>19</td><td>24</td><td>13</td><td>14</td><td>2</td><td>1</td><td>6</td><td>1</td></tr>
+    </table>
+    </body></html>
+    '''
+    df = parse_polls_html(html, geography="GB")
+    assert set(df["pollster"]) == {"RestoreEraPoll"}
+    row = df.iloc[0]
+    assert row["reform"] == 24.0
+    assert row["restore"] == 6.0
+    assert row["other"] == 1.0
+
+
+def test_dash_cell_is_missing_not_zero():
+    """A pollster that doesn't prompt for a party shows an em-dash — that must
+    parse as NaN (not measured), not 0.0, so window means over pollsters that DO
+    measure it aren't dragged down."""
+    import math
+    html = '''
+    <html><body>
+    <table class="wikitable">
+    <tr><th>Pollster</th><th>Date</th><th>Sample size</th>
+        <th>Lab</th><th>Con</th><th>Ref</th><th>LD</th><th>Grn</th><th>SNP</th><th>PC</th><th>RB</th><th>Others</th></tr>
+    <tr><td>MeasuresRB</td><td>1 Jul 2026</td><td>1000</td>
+        <td>20</td><td>19</td><td>24</td><td>13</td><td>14</td><td>2</td><td>1</td><td>4</td><td>3</td></tr>
+    <tr><td>NoRBPrompt</td><td>2 Jul 2026</td><td>1000</td>
+        <td>21</td><td>20</td><td>25</td><td>13</td><td>14</td><td>2</td><td>1</td><td>—</td><td>4</td></tr>
+    </table>
+    </body></html>
+    '''
+    df = parse_polls_html(html, geography="GB")
+    assert set(df["pollster"]) == {"MeasuresRB", "NoRBPrompt"}
+    measured = df[df["pollster"] == "MeasuresRB"].iloc[0]
+    missing = df[df["pollster"] == "NoRBPrompt"].iloc[0]
+    assert measured["restore"] == 4.0
+    assert math.isnan(missing["restore"])
+    assert df["restore"].mean() == 4.0  # NaN skipped
+
+
+def test_multiple_columns_mapping_to_same_slot_accumulate():
+    """Two headers that both fold into 'other' (e.g. YP + Others) must sum,
+    not overwrite each other."""
+    html = '''
+    <html><body>
+    <table class="wikitable">
+    <tr><th>Pollster</th><th>Date</th><th>Sample size</th>
+        <th>Lab</th><th>Con</th><th>Ref</th><th>LD</th><th>Grn</th><th>SNP</th><th>PC</th><th>YP</th><th>Others</th></tr>
+    <tr><td>AccumPoll</td><td>1 Jul 2026</td><td>1000</td>
+        <td>20</td><td>19</td><td>24</td><td>13</td><td>14</td><td>2</td><td>1</td><td>4</td><td>3</td></tr>
+    </table>
+    </body></html>
+    '''
+    df = parse_polls_html(html, geography="GB")
+    assert set(df["pollster"]) == {"AccumPoll"}
+    assert df.iloc[0]["other"] == 7.0  # YP 4 + Others 3
+
+
 def test_implausible_share_sum_rows_are_filtered():
     """A row whose party shares sum to ~600 (seat-projection table) must be dropped."""
     html = '''

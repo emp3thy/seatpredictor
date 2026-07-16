@@ -6,7 +6,7 @@ Asserts:
 - Per-constituency shares sum to ~100%
 - Polls table has >=30 rows since GE 2024
 - Transfer matrix has at least one non-null cell
-- All four seeded by-elections present
+- All seeded by-elections present
 """
 
 import contextlib
@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
 EXPECTED_BYELECTIONS = {
     "runcorn_helsby_2025", "hamilton_larkhall_stonehouse_2025",
     "caerphilly_senedd_2025", "gorton_denton_2026",
+    "makerfield_2026", "aberdeen_south_2026", "arbroath_broughty_ferry_2026",
 }
 
 
@@ -72,7 +73,7 @@ def main() -> int:
             if missing_evs:
                 print(f"FAIL: missing by-elections {missing_evs}", file=sys.stderr)
                 return 1
-            print("  By-elections seeded: 4 OK")
+            print(f"  By-elections seeded: {len(EXPECTED_BYELECTIONS)} OK")
 
             weights = pd.read_sql_query("SELECT * FROM transfer_weights", conn)
             if len(weights) == 0:

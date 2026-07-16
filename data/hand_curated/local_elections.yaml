@@ -17,3 +17,18 @@ events:
         method: "sole_source"
         shares: { con: 15.0, lab: 20.0, ld: 17.0, reform: 30.0, green: 11.0, other: 7.0 }
     notes: "BBC PNS, attested by two independent secondary sources (Elections Etc analysis, Wikipedia). Method is 'sole_source' because both attestations cite the same underlying BBC measurement — they are not independent estimates. To add Sky News or Britain Elects' independently-computed PNS later, use the /add-local-election skill."
+
+  - date: 2026-05-07
+    name: "May 2026 local elections"
+    pns:
+      sources:
+        - source: "BBC News PNS (via Electoral Reform Society analysis)"
+          source_url: "https://electoral-reform.org.uk/how-would-each-party-have-done-if-mays-elections-were-across-all-of-britain/"
+          shares: { con: 17.0, lab: 17.0, ld: 16.0, reform: 26.0, green: 18.0, other: 6.0 }
+        - source: "Sky News NEV (via Electoral Reform Society analysis)"
+          source_url: "https://electoral-reform.org.uk/how-would-each-party-have-done-if-mays-elections-were-across-all-of-britain/"
+          shares: { con: 20.0, lab: 15.0, ld: 14.0, reform: 27.0, green: 14.0, other: 10.0 }
+      consolidated:
+        method: "median_across_sources"
+        shares: { con: 18.5, lab: 16.0, ld: 15.0, reform: 26.5, green: 16.0, other: 8.0 }
+    notes: "BBC PNS and Sky NEV agree on Reform within 1pp (26 vs 27) but diverge on Con (17 vs 20) and Green (18 vs 14) — different methodologies (PNS vs NEV). Restore Britain did not contest (party formed after these elections); restore implicitly 0."

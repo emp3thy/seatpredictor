@@ -92,7 +92,11 @@ def compute_swing(
             f"no polls in window: geography={geography} as_of={as_of} window_days={window_days}"
         )
 
-    poll_means = {p: float(window[p.value].mean()) for p in PartyCode}
+    # NaN = pollster didn't measure that party; mean() skips NaN so the average
+    # reflects only pollsters who did. All-NaN window (party measured by nobody,
+    # e.g. restore before its 2026 formation) → 0.0.
+    raw_means = {p: window[p.value].mean() for p in PartyCode}
+    poll_means = {p: 0.0 if pd.isna(m) else float(m) for p, m in raw_means.items()}
     ge_shares = ge2024_national_share(results_2024, nations=_GEO_TO_NATIONS[geography])
     swing = {p: poll_means[p] - ge_shares[p] for p in PartyCode}
 

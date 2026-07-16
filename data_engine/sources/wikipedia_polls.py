@@ -22,6 +22,10 @@ _PARTY_HEADER_MAP = {
     "snp": "snp",
     "pc": "plaid", "plaid": "plaid",
     "others": "other", "other": "other",
+    "rb": "restore", "restore": "restore", "restore britain": "restore",
+    # Minor parties with their own Wikipedia column but no PartyCode slot fold
+    # into "other" (shares accumulate across columns in _parse_row).
+    "yp": "other", "your party": "other",
 }
 
 # Tables we accept must contain at least these party columns (post-normalisation).
@@ -48,7 +52,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
 
     Returns one row per poll with columns:
     pollster, fieldwork_start, fieldwork_end, published_date,
-    sample_size, geography, con, lab, ld, reform, green, snp, plaid, other.
+    sample_size, geography, con, lab, ld, reform, restore, green, snp, plaid, other.
 
     Strategy: walk every <table class="wikitable">; admit only tables whose header
     contains a Pollster column AND at least Lab/Con/Reform party columns. Skip rows
@@ -76,7 +80,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
         col_map = _build_column_map(header_cells)
         if not col_map.get("pollster"):
             continue
-        party_keys_present = {v for k, v in col_map.items() if v in {"lab", "con", "ld", "reform", "green", "snp", "plaid", "other"}}
+        party_keys_present = {v for k, v in col_map.items() if v in {"lab", "con", "ld", "reform", "restore", "green", "snp", "plaid", "other"}}
         if not _REQUIRED_PARTIES_FOR_VI_TABLE <= party_keys_present:
             continue  # not a national-VI-shaped table
 
@@ -96,7 +100,7 @@ def parse_polls_html(html: str, geography: str) -> pd.DataFrame:
 
     n_before_filter = len(rows)
     df = pd.DataFrame(rows)
-    _SHARE_COLS = ["con", "lab", "ld", "reform", "green", "snp", "plaid", "other"]
+    _SHARE_COLS = ["con", "lab", "ld", "reform", "restore", "green", "snp", "plaid", "other"]
     share_sum = df[_SHARE_COLS].sum(axis=1)
     # Reject rows whose party-share sum is implausibly far from 100% — these are
     # seat-projection MRP tables (sums ~600 from seat counts), sub-national tables
@@ -190,6 +194,11 @@ def _parse_row(
     sample_idx = int(col_map["sample"]) if "sample" in col_map else -1
     sample = _parse_int(_clean(td_nodes[sample_idx])) if sample_idx >= 0 and sample_idx < len(td_nodes) else 0
 
+    # Party slots start as None (= not measured). A pollster that doesn't prompt for
+    # a party shows "—" in its column; that is missing data, not a 0% reading — e.g.
+    # only some pollsters report Restore Britain separately, and coercing the rest
+    # to 0.0 would drag the window mean far below what the measuring pollsters find.
+    # None survives into the DataFrame as NaN; downstream means skip NaN.
     out: dict = {
         "pollster": pollster,
         "fieldwork_start": fws.isoformat(),
@@ -197,8 +206,8 @@ def _parse_row(
         "published_date": fwe.isoformat(),
         "sample_size": sample,
         "geography": geography,
-        "con": 0.0, "lab": 0.0, "ld": 0.0, "reform": 0.0,
-        "green": 0.0, "snp": 0.0, "plaid": 0.0, "other": 0.0,
+        "con": None, "lab": None, "ld": None, "reform": None, "restore": None,
+        "green": None, "snp": None, "plaid": None, "other": None,
     }
     for k, v in col_map.items():
         if k in {"pollster", "sample", "date"}:
@@ -206,7 +215,12 @@ def _parse_row(
         idx = int(k)
         if idx >= len(td_nodes):
             continue
-        out[v] = _parse_pct(_clean(td_nodes[idx]))
+        pct = _parse_pct(_clean(td_nodes[idx]))
+        if pct is None:
+            continue
+        # accumulate, not assign: several columns can map to the same slot
+        # (e.g. YP + Others both fold into "other").
+        out[v] = (out[v] or 0.0) + pct
     return out
 
 
@@ -403,8 +417,10 @@ def _parse_int(s: str) -> int:
     return 0
 
 
-def _parse_pct(s: str) -> float:
-    # Take only the first numeric token (handles "7%RB9%YP1%" style extra text)
+def _parse_pct(s: str) -> float | None:
+    """First numeric token as float (handles "7%RB9%YP1%" style extra text).
+    Returns None for missing-data markers ("—", blank, N/A) and unparseable
+    cells — the party wasn't measured, which is not the same as polling 0%."""
     s = s.strip()
     m = re.match(r"([\d.]+)%?", s)
     if m:
@@ -412,6 +428,4 @@ def _parse_pct(s: str) -> float:
             return float(m.group(1))
         except ValueError:
             pass
-    if s in {"", "-", "—", "N/A", "n/a", "–"}:
-        return 0.0
-    return 0.0
+    return None

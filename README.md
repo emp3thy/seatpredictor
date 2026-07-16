@@ -33,7 +33,7 @@ uv run seatpredict-data snapshot
 uv run python scripts/smoke_verify.py
 ```
 
-The smoke verification asserts: 650 constituencies parsed, shares sum to ~100% per seat, ≥30 polls extracted, all four by-elections seeded, transfer matrix non-empty. If any check fails, the error message indicates which parser to inspect.
+The smoke verification asserts: 650 constituencies parsed, shares sum to ~100% per seat, ≥30 polls extracted, all curated by-elections seeded, transfer matrix non-empty. If any check fails, the error message indicates which parser to inspect.
 
 ## Snapshots
 

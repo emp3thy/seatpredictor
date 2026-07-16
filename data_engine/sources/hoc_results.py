@@ -34,6 +34,9 @@ _PARTY_ALIASES: dict[PartyCode, set[str]] = {
     PartyCode.CON: {"con", "conservative", "conservatives", "conservative & unionist"},
     PartyCode.LD: {"ld", "lib dem", "libdem", "liberal democrat", "liberal democrats"},
     PartyCode.REFORM: {"reform", "ref", "ruk", "reform uk"},
+    # No 2024 column exists (party formed 2026); mapping stays None and the parser
+    # emits 0-vote rows, giving restore an explicit 0% GE-2024 baseline per seat.
+    PartyCode.RESTORE: {"rb", "restore", "restore britain"},
     PartyCode.GREEN: {"green", "grn", "green party"},
     PartyCode.SNP: {"snp", "scottish national party"},
     PartyCode.PLAID: {"pc", "plaid", "plaid cymru"},

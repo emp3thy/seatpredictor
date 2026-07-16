@@ -4,6 +4,7 @@ import shutil
 import pytest
 from click.testing import CliRunner
 from data_engine.cli import main
+from data_engine.snapshot import SCHEMA_VERSION
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]  # tests/data_engine/test_cli.py -> repo root
 
@@ -40,7 +41,7 @@ def test_cli_snapshot_creates_file(primed_repo: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     snaps = list((primed_repo / "data" / "snapshots").glob("*.sqlite"))
     assert len(snaps) == 1
-    assert "2026-04-25__v1__" in snaps[0].name
+    assert f"2026-04-25__v{SCHEMA_VERSION}__" in snaps[0].name
 
 
 def test_cli_snapshot_is_idempotent(primed_repo: Path, monkeypatch):

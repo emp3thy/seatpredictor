@@ -21,6 +21,9 @@ class Poll(BaseModel):
     lab: float = Field(ge=0, le=100)
     ld: float = Field(ge=0, le=100)
     reform: float = Field(ge=0, le=100)
+    # Default 0.0: polls published before Restore Britain's 2026 formation have no
+    # restore column.
+    restore: float = Field(default=0.0, ge=0, le=100)
     green: float = Field(ge=0, le=100)
     snp: float = Field(ge=0, le=100)
     plaid: float = Field(ge=0, le=100)
@@ -28,7 +31,7 @@ class Poll(BaseModel):
 
     @model_validator(mode="after")
     def _check_shares_and_dates(self) -> "Poll":
-        total = self.con + self.lab + self.ld + self.reform + self.green + self.snp + self.plaid + self.other
+        total = self.con + self.lab + self.ld + self.reform + self.restore + self.green + self.snp + self.plaid + self.other
         if not (99.0 <= total <= 101.0):
             raise ValueError(f"shares must sum to ~100 (got {total:.2f})")
         if self.fieldwork_start > self.fieldwork_end:

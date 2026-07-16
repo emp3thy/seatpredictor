@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-04-26T21:04:18Z",
-  "derived_from_snapshot_hash": "a80a24d29233",
-  "derived_from_snapshot_as_of_date": "2026-04-26",
-  "derived_from_local_elections_yaml_sha256": "7d269ec395d7",
+  "generated_at_utc": "2026-07-16T20:27:32Z",
+  "derived_from_snapshot_hash": "499cf976f40b",
+  "derived_from_snapshot_as_of_date": "2026-07-16",
+  "derived_from_local_elections_yaml_sha256": "2de231d7efc7",
   "method": {
     "description": "actual_minus_final_week_poll_mean, weighted",
     "final_week_window_days": 7,
@@ -15,32 +15,32 @@
     },
     "interpretation_note": "positive aggregate.bias_pp means pollsters under-state Reform; the recommended_reform_polling_correction_pp can be passed to seatpredict-predict via --reform-polling-correction-pp."
   },
-  "events_used": 5,
-  "events_with_polls": 5,
+  "events_used": 9,
+  "events_with_polls": 9,
   "aggregate": {
-    "bias_pp": 4.863047619047618,
+    "bias_pp": -1.2295679012345682,
     "interpretation": "positive value: pollsters under-state Reform on average; recommended correction = +bias_pp",
-    "recommended_reform_polling_correction_pp": 4.863047619047618
+    "recommended_reform_polling_correction_pp": -1.2295679012345682
   },
   "per_pollster": {
     "find_out_now": {
-      "mean_bias_pp": 2.804,
-      "n_events_with_polls": 5,
+      "mean_bias_pp": 0.09111111111111114,
+      "n_events_with_polls": 9,
       "reliability": "high"
     },
     "yougov": {
-      "mean_bias_pp": 6.304,
-      "n_events_with_polls": 5,
+      "mean_bias_pp": 2.2025,
+      "n_events_with_polls": 8,
       "reliability": "high"
     },
     "more_in_common": {
-      "mean_bias_pp": 4.904,
-      "n_events_with_polls": 5,
+      "mean_bias_pp": -5.643636363636364,
+      "n_events_with_polls": 11,
       "reliability": "high"
     },
     "opinium": {
-      "mean_bias_pp": 3.38,
-      "n_events_with_polls": 4,
+      "mean_bias_pp": -6.085,
+      "n_events_with_polls": 8,
       "reliability": "high"
     },
     "techne": {
@@ -54,23 +54,18 @@
       "reliability": "low"
     },
     "survation": {
-      "mean_bias_pp": -0.8999999999999986,
-      "n_events_with_polls": 1,
-      "reliability": "low"
-    },
-    "lord_ashcroft_polls": {
-      "mean_bias_pp": 4.6000000000000005,
-      "n_events_with_polls": 3,
+      "mean_bias_pp": -5.1499999999999995,
+      "n_events_with_polls": 4,
       "reliability": "high"
     },
-    "bmg_research": {
-      "mean_bias_pp": -4.899999999999999,
-      "n_events_with_polls": 1,
+    "lord_ashcroft_polls": {
+      "mean_bias_pp": 3.5500000000000007,
+      "n_events_with_polls": 2,
       "reliability": "low"
     },
-    "norstat": {
-      "mean_bias_pp": 5.100000000000001,
-      "n_events_with_polls": 1,
+    "bmg_research": {
+      "mean_bias_pp": -3.1999999999999993,
+      "n_events_with_polls": 2,
       "reliability": "low"
     },
     "focaldata": {
@@ -82,6 +77,16 @@
       "mean_bias_pp": -0.3000000000000007,
       "n_events_with_polls": 1,
       "reliability": "low"
+    },
+    "deltapoll": {
+      "mean_bias_pp": -6.3,
+      "n_events_with_polls": 4,
+      "reliability": "high"
+    },
+    "convergent_opinion": {
+      "mean_bias_pp": -16.566666666666666,
+      "n_events_with_polls": 3,
+      "reliability": "high"
     }
   },
   "per_event": [
@@ -109,17 +114,16 @@
       "date": "2025-06-05",
       "actual_share_pp": 26.1,
       "actual_source": null,
-      "poll_mean_share_pp": 28.9,
-      "bias_pp": -2.799999999999997,
+      "poll_mean_share_pp": 29.77777777777778,
+      "bias_pp": -3.677777777777777,
       "weight": 1.0,
-      "n_polls_in_window": 10,
+      "n_polls_in_window": 9,
       "pollsters_in_window": [
         "bmg_research",
         "find_out_now",
         "ipsos",
         "lord_ashcroft_polls",
         "more_in_common",
-        "norstat",
         "opinium",
         "survation",
         "techne",
@@ -150,16 +154,73 @@
       "date": "2026-02-26",
       "actual_share_pp": 28.7,
       "actual_source": null,
-      "poll_mean_share_pp": 25.571428571428573,
-      "bias_pp": 3.1285714285714263,
+      "poll_mean_share_pp": 26.75,
+      "bias_pp": 1.9499999999999993,
       "weight": 1.0,
-      "n_polls_in_window": 7,
+      "n_polls_in_window": 4,
       "pollsters_in_window": [
         "find_out_now",
-        "lord_ashcroft_polls",
-        "more_in_common",
         "omnisis",
+        "opinium"
+      ]
+    },
+    {
+      "event_id": "makerfield_2026",
+      "type": "by_election",
+      "date": "2026-06-18",
+      "actual_share_pp": 34.5,
+      "actual_source": null,
+      "poll_mean_share_pp": 31.375,
+      "bias_pp": 3.125,
+      "weight": 1.0,
+      "n_polls_in_window": 8,
+      "pollsters_in_window": [
+        "convergent_opinion",
+        "deltapoll",
+        "find_out_now",
+        "more_in_common",
         "opinium",
+        "survation",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "aberdeen_south_2026",
+      "type": "by_election",
+      "date": "2026-06-18",
+      "actual_share_pp": 8.6,
+      "actual_source": null,
+      "poll_mean_share_pp": 31.375,
+      "bias_pp": -22.775,
+      "weight": 1.0,
+      "n_polls_in_window": 8,
+      "pollsters_in_window": [
+        "convergent_opinion",
+        "deltapoll",
+        "find_out_now",
+        "more_in_common",
+        "opinium",
+        "survation",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "arbroath_broughty_ferry_2026",
+      "type": "by_election",
+      "date": "2026-06-18",
+      "actual_share_pp": 18.2,
+      "actual_source": null,
+      "poll_mean_share_pp": 31.375,
+      "bias_pp": -13.175,
+      "weight": 1.0,
+      "n_polls_in_window": 8,
+      "pollsters_in_window": [
+        "convergent_opinion",
+        "deltapoll",
+        "find_out_now",
+        "more_in_common",
+        "opinium",
+        "survation",
         "yougov"
       ]
     },
@@ -178,6 +239,25 @@
         "more_in_common",
         "opinium",
         "techne",
+        "yougov"
+      ]
+    },
+    {
+      "event_id": "2026_05_07_local",
+      "type": "local_election",
+      "date": "2026-05-07",
+      "actual_share_pp": 26.5,
+      "actual_source": "median_across_sources",
+      "poll_mean_share_pp": 27.0,
+      "bias_pp": -0.5,
+      "weight": 1.0,
+      "n_polls_in_window": 6,
+      "pollsters_in_window": [
+        "bmg_research",
+        "deltapoll",
+        "find_out_now",
+        "more_in_common",
+        "opinium",
         "yougov"
       ]
     }

@@ -67,7 +67,7 @@ def test_snapshot_filename_includes_input_hash(tmp_path: Path, primed_cache: Raw
         byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
     )
     path = build_snapshot(cfg)
-    assert path.name.startswith("2026-04-25__v1__")
+    assert path.name.startswith(f"2026-04-25__v{SCHEMA_VERSION}__")
     assert path.suffix == ".sqlite"
 
 
