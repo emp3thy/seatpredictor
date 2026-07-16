@@ -19,6 +19,12 @@ class ByElectionEvent(BaseModel):
     region: str
     threat_party: PartyCode | None = None
     exclude_from_matrix: bool = False
+    # Exclude from the Reform polling-bias aggregate (notebook 05 / poll_bias).
+    # Distinct from exclude_from_matrix: an event can be useless for transfer
+    # flows but fine for bias (e.g. a procedural contest), or useless for both
+    # (e.g. a two-candidate novelty race where Reform's share says nothing
+    # about national polling accuracy).
+    exclude_from_bias: bool = False
     narrative_url: HttpUrl | None = None
 
     @model_validator(mode="before")

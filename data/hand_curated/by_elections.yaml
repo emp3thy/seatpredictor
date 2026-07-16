@@ -2,6 +2,9 @@
 # threat_party: party the tactical consolidation was *against* (typically the polling-frontrunner heading in,
 # even if they didn't win on the day). Set null for events with no clear threat dynamic.
 # exclude_from_matrix: set true for atypical events (e.g. scandal-driven contests) where flows aren't generalisable.
+# exclude_from_bias: set true (default false) to keep an event out of the Reform polling-bias
+# aggregate (notebook 05) — e.g. a two-candidate novelty race where Reform's local share says
+# nothing about national polling accuracy. Independent of exclude_from_matrix.
 
 events:
   - event_id: runcorn_helsby_2025
