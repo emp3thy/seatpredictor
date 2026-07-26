@@ -186,3 +186,90 @@ def test_restore_never_a_flow_source():
     ])], ignore_index=True)
     cells, _ = derive_transfer_matrix(events, results)
     assert len(cells[cells["source"] == "restore"]) == 0
+
+
+def _overrides(*rows) -> pd.DataFrame:
+    return pd.DataFrame(
+        list(rows),
+        columns=["nation", "consolidator", "source", "weight", "rationale"],
+    )
+
+
+def test_override_replaces_derived_cell():
+    events, results = _fake_byelections()
+    ovr = _overrides(("wales", "plaid", "lab", 0.15, "curated"))
+    cells, _ = derive_transfer_matrix(events, results, overrides=ovr)
+    row = cells[(cells["consolidator"] == "plaid") & (cells["source"] == "lab")].iloc[0]
+    assert row["weight"] == pytest.approx(0.15)
+    assert row["n"] == 0
+
+
+def test_override_creates_absent_cell():
+    """green's prior is below threshold so no derived cell exists; the override
+    creates one."""
+    events, results = _fake_byelections()
+    ovr = _overrides(("wales", "plaid", "green", 0.4, "curated"))
+    cells, _ = derive_transfer_matrix(events, results, overrides=ovr)
+    row = cells[(cells["consolidator"] == "plaid") & (cells["source"] == "green")].iloc[0]
+    assert row["weight"] == pytest.approx(0.4)
+    assert row["n"] == 0
+
+
+def test_non_overridden_cells_keep_derived_values():
+    events, results = _fake_byelections()
+    baseline, _ = derive_transfer_matrix(events, results)
+    baseline_con = baseline[baseline["source"] == "con"].iloc[0]["weight"]
+
+    ovr = _overrides(("wales", "plaid", "lab", 0.15, "curated"))
+    cells, _ = derive_transfer_matrix(events, results, overrides=ovr)
+    con_row = cells[cells["source"] == "con"].iloc[0]
+    assert con_row["weight"] == pytest.approx(baseline_con)
+    assert con_row["n"] == 1
+
+
+def test_override_adds_hand_curated_provenance():
+    events, results = _fake_byelections()
+    ovr = _overrides(
+        ("wales", "plaid", "lab", 0.15, "curated"),
+        ("wales", "plaid", "con", 0.25, "curated"),
+    )
+    _, prov = derive_transfer_matrix(events, results, overrides=ovr)
+    rows = prov[(prov["nation"] == "wales") & (prov["consolidator"] == "plaid")]
+    hand = rows[rows["event_id"] == "hand_curated"]
+    assert len(hand) == 1  # one row per (nation, consolidator), not per cell
+    assert "caer_test" in set(rows["event_id"])  # derived provenance survives
+
+
+def test_override_for_consolidator_with_no_derived_cells():
+    """An override can stand up a whole block the data never produced."""
+    events, results = _fake_byelections()
+    ovr = _overrides(("england", "lab", "con", 0.2, "curated"))
+    cells, prov = derive_transfer_matrix(events, results, overrides=ovr)
+    row = cells[(cells["nation"] == "england") & (cells["consolidator"] == "lab")].iloc[0]
+    assert row["source"] == "con"
+    assert row["weight"] == pytest.approx(0.2)
+    assert row["n"] == 0
+    assert ("england", "lab", "hand_curated") in set(
+        zip(prov["nation"], prov["consolidator"], prov["event_id"])
+    )
+
+
+def test_overrides_none_reproduces_current_behaviour():
+    events, results = _fake_byelections()
+    a, pa = derive_transfer_matrix(events, results)
+    b, pb = derive_transfer_matrix(events, results, overrides=None)
+    pd.testing.assert_frame_equal(a, b)
+    pd.testing.assert_frame_equal(pa, pb)
+
+
+def test_overrides_apply_even_when_no_events_are_eligible():
+    """Overrides are not conditional on the derivation producing anything."""
+    events, results = _fake_byelections()
+    events.loc[0, "exclude_from_matrix"] = True
+    ovr = _overrides(("england", "lab", "con", 0.2, "curated"))
+    cells, prov = derive_transfer_matrix(events, results, overrides=ovr)
+    assert len(cells) == 1
+    assert cells.iloc[0]["weight"] == pytest.approx(0.2)
+    assert cells.iloc[0]["n"] == 0
+    assert len(prov) == 1
+    assert prov.iloc[0]["event_id"] == "hand_curated"

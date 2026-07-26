@@ -12,8 +12,14 @@ PRIOR_SHARE_THRESHOLD = 2.0  # percentage points
 def derive_transfer_matrix(
     events: pd.DataFrame,
     results: pd.DataFrame,
+    overrides: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Derive the reform_threat transfer matrix from by-election data.
+
+    overrides, when given, is the frame returned by
+    data_engine.sources.transfer_overrides.load_transfer_overrides. Each row
+    replaces the derived cell with the same (nation, consolidator, source) key,
+    or creates that cell if the data produced none. Overridden cells carry n = 0.
 
     Returns:
       cells: DataFrame with columns nation, consolidator, source, weight, n.
@@ -51,18 +57,68 @@ def derive_transfer_matrix(
         })
 
     n_events = len(eligible)
-    if not cell_records:
-        empty_cells = pd.DataFrame(columns=["nation", "consolidator", "source", "weight", "n"])
-        empty_prov = pd.DataFrame(columns=["nation", "consolidator", "event_id"])
-        return empty_cells, empty_prov
+    if cell_records:
+        raw = pd.DataFrame(cell_records)
+        cells = (
+            raw.groupby(["nation", "consolidator", "source"], as_index=False)
+            .agg(weight=("weight", "mean"), n=("event_id", "nunique"))
+        )
+        provenance = pd.DataFrame(prov_records)
+        logger.info("Derived %d matrix cells from %d eligible events", len(cells), n_events)
+    else:
+        cells = pd.DataFrame(columns=["nation", "consolidator", "source", "weight", "n"])
+        provenance = pd.DataFrame(columns=["nation", "consolidator", "event_id"])
 
-    raw = pd.DataFrame(cell_records)
-    cells = (
-        raw.groupby(["nation", "consolidator", "source"], as_index=False)
-        .agg(weight=("weight", "mean"), n=("event_id", "nunique"))
+    cells, provenance = _apply_overrides(cells, provenance, overrides)
+    return cells, provenance
+
+
+def _apply_overrides(
+    cells: pd.DataFrame,
+    provenance: pd.DataFrame,
+    overrides: pd.DataFrame | None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Replace or create cells from hand-curated overrides.
+
+    Overridden and created cells carry n = 0 to mark them as unsupported by any
+    by-election. Each distinct (nation, consolidator) touched gains a single
+    'hand_curated' provenance row, so a seat's matrix_provenance shows at a glance
+    that curated numbers were involved.
+    """
+    if overrides is None or overrides.empty:
+        return cells, provenance
+
+    cells = cells.copy()
+    for _, o in overrides.iterrows():
+        key = (
+            (cells["nation"] == o["nation"])
+            & (cells["consolidator"] == o["consolidator"])
+            & (cells["source"] == o["source"])
+        )
+        if key.any():
+            cells.loc[key, "weight"] = float(o["weight"])
+            cells.loc[key, "n"] = 0
+        else:
+            cells = pd.concat([cells, pd.DataFrame([{
+                "nation": o["nation"],
+                "consolidator": o["consolidator"],
+                "source": o["source"],
+                "weight": float(o["weight"]),
+                "n": 0,
+            }])], ignore_index=True)
+
+    prov_rows = [
+        {"nation": nation, "consolidator": consolidator, "event_id": "hand_curated"}
+        for nation, consolidator in (
+            overrides[["nation", "consolidator"]].drop_duplicates().itertuples(index=False)
+        )
+    ]
+    provenance = pd.concat(
+        [provenance, pd.DataFrame(prov_rows)], ignore_index=True
     )
-    provenance = pd.DataFrame(prov_records)
-    logger.info("Derived %d matrix cells from %d eligible events", len(cells), n_events)
+
+    cells["n"] = cells["n"].astype(int)
+    logger.info("Applied %d hand-curated overrides", len(overrides))
     return cells, provenance
 
 
