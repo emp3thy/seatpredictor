@@ -145,7 +145,9 @@ def test_no_flows_when_nothing_shrank():
 
 Run: `.venv/Scripts/python.exe -m pytest tests/data_engine/test_transfer_matrix.py -v`
 
-Expected: `test_lab_to_plaid_flow_rate`, `test_every_source_scaled_by_the_same_factor`, `test_transferred_total_cannot_exceed_consolidator_gain` and `test_shrinking_reform_counted_in_total_loss` FAIL on the assertion comparing weights (current code returns the unscaled 0.7608696 for lab). `test_scale_clipped_to_one_when_gain_exceeds_loss` and `test_no_flows_when_nothing_shrank` may already pass — that is expected, they guard the new guards.
+Expected: `test_lab_to_plaid_flow_rate`, `test_every_source_scaled_by_the_same_factor`, `test_transferred_total_cannot_exceed_consolidator_gain`, `test_shrinking_reform_counted_in_total_loss` and `test_no_flows_when_nothing_shrank` FAIL (the first four on the assertion comparing weights — current code returns the unscaled 0.7608696 for lab; the last because the old code emits zero-weight cells rather than none).
+
+`test_scale_clipped_to_one_when_gain_exceeds_loss` is expected to PASS already. The old formula ignores the consolidator's gain entirely, so it returns exactly the unscaled value this test asserts. It is kept deliberately as a regression guard on the new `clip()` upper bound, which nothing else covers directly. **Say so explicitly in your report** — note that this one step was green before implementation and why — so the reviewer sees a documented decision rather than a missed RED step.
 
 - [ ] **Step 3: Rewrite `_compute_flows`**
 
@@ -1283,19 +1285,14 @@ Expected: `uniform_swing` totals are unchanged from before this work (lab 233, r
 
 If `uniform_swing` totals differ from those figures, something outside the matrix changed — stop and investigate before committing.
 
-- [ ] **Step 6: Commit the rebuilt data**
+- [ ] **Step 6: No commit — report only**
 
-```bash
-git add data/snapshots data/predictions
-git commit -F - <<'EOF'
-data: rebuild snapshot and predictions on the corrected matrix
+`data/snapshots/`, `data/predictions/` and `data/raw_cache/` are all gitignored
+(`.gitignore` lines 4-6). Generated artifacts are not tracked in this repo and this task
+does not change that. Do NOT use `git add -f`.
 
-First v4 snapshot. Carries the gain-budget-corrected derived weights and the
-four curated england/lab overrides.
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-EOF
-```
+This task is verification-only: it produces no commit. Put the seat totals, the flag
+counts and the matrix dump from steps 3 and 5 in your report file.
 
 ---
 
