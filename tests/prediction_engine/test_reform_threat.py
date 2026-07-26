@@ -210,7 +210,7 @@ def test_reform_threat_low_clarity_flag(tiny_snapshot_path):
 
 
 def test_reform_threat_multiplier_monotone(tiny_snapshot_path):
-    """Seat A: with weight 0.6 for LD, raising multiplier from 0.5 → 1.5 must move ≥ as much LD share."""
+    """Seat A: with weight ≈0.5714 for LD, raising multiplier from 0.5 → 1.5 must move ≥ as much LD share."""
     snap = Snapshot(tiny_snapshot_path)
     moves: list[float] = []
     for m in (0.5, 1.0, 1.5):
@@ -261,8 +261,8 @@ def test_reform_threat_consolidator_already_leads_unit():
 
 def test_reform_threat_multiplier_clipped_integration(tiny_snapshot_path):
     """Integration coverage for the multiplier_clipped flag: a high multiplier on
-    Seat A should saturate at least one source's full share (ld_share * 0.6 * 1.0 * m
-    exceeds ld_share when m >= 1/0.6 ≈ 1.667). The flag must round-trip through
+    Seat A should saturate at least one source's full share (ld_share * 0.5714 * 1.0 * m
+    exceeds ld_share when m >= 1/0.5714 ≈ 1.75). The flag must round-trip through
     _seat_with_flags' json.dumps."""
     snap = Snapshot(tiny_snapshot_path)
     res = ReformThreatStrategy().predict(snap, ReformThreatConfig(multiplier=5.0))

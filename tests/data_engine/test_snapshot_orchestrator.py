@@ -199,6 +199,58 @@ def test_overrides_absent_hashes_to_none(tmp_path: Path, primed_cache: RawCache)
     assert _source_versions(cfg)["transfer_overrides_yaml"] == "none"
 
 
+def test_build_snapshot_applies_transfer_overrides(tmp_path: Path, primed_cache: RawCache):
+    """End-to-end: transfer_overrides_yaml must actually reach the written
+    transfer_weights / transfer_weights_provenance tables, not just _source_versions.
+
+    Chosen cell: (scotland, snp, ld). The real by_elections.yaml's only Scotland
+    event eligible for the matrix (hamilton_larkhall_stonehouse_2025) has no
+    left-bloc party gaining share, so derive_transfer_matrix produces zero cells
+    for Scotland — this override creates a cell rather than replacing a derived
+    one, deliberately avoiding any ambiguity about which value "wins".
+    """
+    ovr_yaml = tmp_path / "transfer_overrides.yaml"
+    ovr_yaml.write_text(
+        "overrides:\n"
+        "  - nation: scotland\n"
+        "    consolidator: snp\n"
+        "    source: ld\n"
+        "    weight: 0.33\n"
+        "    rationale: >\n"
+        "      Test override creating a cell the real by-election data does not\n"
+        "      derive (Scotland's only eligible event has no left-bloc gainer).\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "snapshots"
+    cfg = BuildSnapshotConfig(
+        as_of_date=date(2026, 4, 25),
+        raw_cache=primed_cache,
+        out_dir=out,
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
+        transfer_overrides_yaml=ovr_yaml,
+    )
+    path = build_snapshot(cfg)
+    with open_snapshot_db(path) as conn:
+        weights = read_dataframe(conn, "transfer_weights")
+        provenance = read_dataframe(conn, "transfer_weights_provenance")
+
+    cell = weights[
+        (weights["nation"] == "scotland")
+        & (weights["consolidator"] == "snp")
+        & (weights["source"] == "ld")
+    ]
+    assert len(cell) == 1
+    assert cell.iloc[0]["weight"] == pytest.approx(0.33)
+    assert cell.iloc[0]["n"] == 0
+
+    hand_curated = provenance[
+        (provenance["nation"] == "scotland")
+        & (provenance["consolidator"] == "snp")
+        & (provenance["event_id"] == "hand_curated")
+    ]
+    assert len(hand_curated) == 1
+
+
 def test_editing_overrides_changes_the_input_hash(tmp_path: Path, primed_cache: RawCache):
     """A curated weight change must invalidate the cached snapshot."""
     from data_engine.snapshot import _source_versions
