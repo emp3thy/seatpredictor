@@ -96,9 +96,41 @@ def _compute_flows(
     ev_results: pd.DataFrame,
     consolidator: PartyCode,
 ) -> dict[PartyCode, float]:
-    """For each non-Reform, non-Restore, non-consolidator party with prior_share above
-    threshold, compute (prior - actual) / prior, clamped [0, 1]. Restore sits right of
-    Reform: its vote is threat-side, not a tactical-consolidation source."""
+    """For each eligible source party, the fraction of its vote that moved to the
+    consolidator.
+
+    The consolidator's own gain is the transfer budget. A source party's raw
+    shrinkage, (prior - actual) / prior, measures how much of its vote disappeared —
+    not how much reached the consolidator. Scaling every raw shrinkage by
+    consolidator_gain / total_loss makes the transferred total equal the
+    consolidator's actual gain: an accounting identity, since shares sum to 100
+    before and after, so total gains equal total losses. Whatever the consolidator
+    did not capture was absorbed by the threat party, without needing to be
+    modelled explicitly.
+
+    Restore sits right of Reform: like Reform it is never a flow *source*, but both
+    are counted in total_loss when they shrink, because they compete for the same
+    freed vote.
+    """
+    cons_row = ev_results[ev_results["party"] == consolidator.value]
+    if cons_row.empty:
+        return {}
+    consolidator_gain = float(cons_row.iloc[0]["actual_share"]) - float(
+        cons_row.iloc[0]["prior_share"]
+    )
+    if consolidator_gain <= 0:
+        return {}
+
+    total_loss = 0.0
+    for _, r in ev_results.iterrows():
+        if PartyCode(r["party"]) == consolidator:
+            continue
+        total_loss += max(0.0, float(r["prior_share"]) - float(r["actual_share"]))
+    if total_loss <= 0:
+        return {}
+
+    scale = max(0.0, min(1.0, consolidator_gain / total_loss))
+
     flows: dict[PartyCode, float] = {}
     for _, r in ev_results.iterrows():
         party = PartyCode(r["party"])
@@ -109,5 +141,5 @@ def _compute_flows(
         if prior <= PRIOR_SHARE_THRESHOLD:
             continue
         raw_flow = (prior - actual) / prior
-        flows[party] = max(0.0, min(1.0, raw_flow))
+        flows[party] = max(0.0, min(1.0, raw_flow * scale))
     return flows

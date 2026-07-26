@@ -43,17 +43,24 @@ def test_fixture_matrix_has_expected_cells(tiny_snapshot_path):
 
 
 def test_fixture_matrix_weights_are_correct(tiny_snapshot_path):
-    """Verify the derived matrix matches the hand-computed flows from the design constraint."""
+    """Verify the derived matrix matches the hand-computed flows.
+
+    tst_eng_2025: lab gains 20.0; losses are ld 6.0 + green 5.0 + con 2.0 +
+    reform 8.0 = 21.0, so scale = 20/21.
+    tst_wal_2025: plaid gains 25.0; losses are lab 30.0 + ld 2.0 + green 5.0 +
+    con 3.0 = 40.0, so scale = 25/40 = 0.625.
+    """
     tw = _read(tiny_snapshot_path, "transfer_weights").set_index(
         ["nation", "consolidator", "source"]
     )
-    assert tw.loc[("england", "lab", "ld"),    "weight"] == pytest.approx(0.6,  abs=1e-6)
-    assert tw.loc[("england", "lab", "green"), "weight"] == pytest.approx(0.5,  abs=1e-6)
-    assert tw.loc[("england", "lab", "con"),   "weight"] == pytest.approx(0.4,  abs=1e-6)
-    assert tw.loc[("wales", "plaid", "lab"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
-    assert tw.loc[("wales", "plaid", "green"), "weight"] == pytest.approx(0.5,  abs=1e-6)
-    assert tw.loc[("wales", "plaid", "con"),   "weight"] == pytest.approx(0.6,  abs=1e-6)
-    assert tw.loc[("wales", "plaid", "ld"),    "weight"] == pytest.approx(2/3,  abs=1e-6)
+    eng = 20.0 / 21.0
+    assert tw.loc[("england", "lab", "ld"),    "weight"] == pytest.approx(0.6 * eng, abs=1e-6)
+    assert tw.loc[("england", "lab", "green"), "weight"] == pytest.approx(0.5 * eng, abs=1e-6)
+    assert tw.loc[("england", "lab", "con"),   "weight"] == pytest.approx(0.4 * eng, abs=1e-6)
+    assert tw.loc[("wales", "plaid", "lab"),   "weight"] == pytest.approx(0.375,     abs=1e-6)
+    assert tw.loc[("wales", "plaid", "green"), "weight"] == pytest.approx(0.3125,    abs=1e-6)
+    assert tw.loc[("wales", "plaid", "con"),   "weight"] == pytest.approx(0.375,     abs=1e-6)
+    assert tw.loc[("wales", "plaid", "ld"),    "weight"] == pytest.approx(2/3 * 0.625, abs=1e-6)
 
 
 def test_fixture_provenance_links_back_to_events(tiny_snapshot_path):

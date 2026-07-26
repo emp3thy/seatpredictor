@@ -42,13 +42,81 @@ def test_derives_consolidator_from_biggest_left_bloc_gainer():
 
 
 def test_lab_to_plaid_flow_rate():
+    """Flow is the source party's proportional loss scaled by the consolidator's
+    share of the freed vote.
+
+    caer_test: plaid gains 19.0. Losses across every non-consolidator party are
+    lab 35.0 + con 14.8 + ld 1.2 + green 0.3 = 51.3. scale = 19.0 / 51.3.
+    """
     events, results = _fake_byelections()
     cells, _ = derive_transfer_matrix(events, results)
     lab_row = cells[(cells["consolidator"] == "plaid") & (cells["source"] == "lab")].iloc[0]
-    expected = (46.0 - 11.0) / 46.0
+    scale = 19.0 / 51.3
+    expected = ((46.0 - 11.0) / 46.0) * scale
     assert abs(lab_row["weight"] - expected) < 1e-6
+    assert abs(lab_row["weight"] - 0.2818035) < 1e-6
     assert lab_row["nation"] == "wales"
     assert lab_row["n"] == 1
+
+
+def test_every_source_scaled_by_the_same_factor():
+    """Relative ordering between sources within an event is preserved."""
+    events, results = _fake_byelections()
+    cells, _ = derive_transfer_matrix(events, results)
+    by_source = cells.set_index("source")["weight"]
+    assert abs(by_source["lab"] - 0.2818035) < 1e-6
+    assert abs(by_source["con"] - 0.3168486) < 1e-6
+    assert abs(by_source["ld"] - 0.1851852) < 1e-6
+
+
+def test_transferred_total_cannot_exceed_consolidator_gain():
+    """Sum of moved vote equals the consolidator's actual gain, within float error."""
+    events, results = _fake_byelections()
+    cells, _ = derive_transfer_matrix(events, results)
+    priors = {"lab": 46.0, "con": 17.3, "ld": 2.4}
+    moved = sum(
+        priors[row["source"]] * row["weight"]
+        for _, row in cells.iterrows()
+        if row["source"] in priors
+    )
+    plaid_gain = 47.4 - 28.4
+    assert moved <= plaid_gain + 1e-6
+    assert abs(moved - plaid_gain) < 0.5  # green's sub-threshold loss is the only shortfall
+
+
+def test_scale_clipped_to_one_when_gain_exceeds_loss():
+    """A consolidator gaining more than the total loss (turnout effects) cannot
+    produce a weight above the unscaled proportional loss."""
+    events, results = _fake_byelections()
+    results.loc[results["party"] == "plaid", "actual_share"] = 95.0
+    cells, _ = derive_transfer_matrix(events, results)
+    lab_row = cells[cells["source"] == "lab"].iloc[0]
+    assert abs(lab_row["weight"] - (46.0 - 11.0) / 46.0) < 1e-6
+
+
+def test_shrinking_reform_counted_in_total_loss():
+    """Reform is never a flow source, but a shrinking Reform still enlarges the
+    denominator and therefore shrinks every weight."""
+    events, results = _fake_byelections()
+    baseline, _ = derive_transfer_matrix(events, results)
+    baseline_lab = baseline[baseline["source"] == "lab"].iloc[0]["weight"]
+
+    results.loc[results["party"] == "reform", "prior_share"] = 46.0
+    results.loc[results["party"] == "reform", "actual_share"] = 36.0
+    shrunk, _ = derive_transfer_matrix(events, results)
+    shrunk_lab = shrunk[shrunk["source"] == "lab"].iloc[0]["weight"]
+
+    assert shrunk_lab < baseline_lab
+    assert len(shrunk[shrunk["source"] == "reform"]) == 0
+
+
+def test_no_flows_when_nothing_shrank():
+    """total_loss == 0 returns no cells rather than dividing by zero."""
+    events, results = _fake_byelections()
+    results["actual_share"] = results["prior_share"]
+    results.loc[results["party"] == "plaid", "actual_share"] = 30.0
+    cells, _ = derive_transfer_matrix(events, results)
+    assert len(cells) == 0
 
 
 def test_below_threshold_source_excluded():
