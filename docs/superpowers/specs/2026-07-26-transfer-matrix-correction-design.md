@@ -109,6 +109,53 @@ green -> lab = ( 3/ 7) * 0.394 = 0.169   (today: 0.429)
 Relative ordering between sources within an event is preserved; every weight shrinks by
 that event's `scale`.
 
+#### Effect on every cell in the current snapshot
+
+Running the proposed formula over the five eligible by-elections in
+`2026-07-26__v3__f83714f07627.sqlite`:
+
+| nation | consolidator | source | today | corrected |
+|---|---|---|---:|---:|
+| england | lab | con | 0.798 | 0.401 |
+| england | lab | green | 0.841 | 0.423 |
+| england | lab | ld | 0.941 | 0.473 |
+| england | green | con | 0.839 | 0.497 |
+| england | green | lab | 0.500 | 0.296 |
+| england | green | ld | 0.606 | 0.359 |
+| england | green | other | 0.819 | 0.485 |
+| wales | plaid | con | 0.855 | 0.305 |
+| wales | plaid | lab | 0.761 | 0.271 |
+| wales | plaid | ld | 0.500 | 0.178 |
+| wales | plaid | other | 0.690 | 0.246 |
+| england | ld | con | 0.552 | 0.010 |
+| england | ld | green | 0.335 | 0.006 |
+| england | ld | lab | 0.268 | 0.005 |
+| scotland | green | con | 0.647 | 0.018 |
+| scotland | green | snp | 0.361 | 0.010 |
+| scotland | green | ld | 0.120 | 0.003 |
+| scotland | green | lab | 0.042 | 0.001 |
+
+These are expected values, not test assertions; the implementation must reproduce them
+from the data rather than hard-code them.
+
+#### Accepted consequence: near-zero consolidators
+
+The last two blocks collapse to near-zero. Runcorn and Helsby 2025 yields
+`scale = 0.018`; Hamilton, Larkhall and Stonehouse 2025 yields `scale = 0.027`. In both
+events the consolidator's own gain was very small next to total vote churn, because
+Reform absorbed nearly all the freed vote.
+
+This is the formula behaving correctly — those events show almost no tactical
+consolidation. The decision is to accept it: the LD-consolidator seats and the Scottish
+Green-consolidator seats will barely move under the tactical strategy until better
+by-election evidence arrives. No floor is applied to `scale`, no override is written for
+those cells, and the affected events are not excluded from the matrix.
+
+Rejected alternatives: a minimum-`scale` floor (distorts every nation to fix two cells);
+hand-curated overrides for those cells (no evidential basis, unlike the England Labour
+cells which correct a known derivation error); `exclude_from_matrix: true` on the two
+events (discards real data and forces `matrix_unavailable`).
+
 ### 2. Override file
 
 New file `data/hand_curated/transfer_overrides.yaml`, following the conventions of the
@@ -153,6 +200,13 @@ overrides:
 
 Scope is England only. Scotland (green consolidator) and Wales (plaid consolidator) keep
 their derived weights, corrected by the new formula.
+
+Measured against the *corrected* derivation rather than the current one, these overrides
+are not a uniform damping factor. They move `con` down (0.401 → 0.20) and `green` and
+`ld` up (0.423 → 0.70, 0.473 → 0.65). They encode the analyst's view that left-bloc
+tactical switching is stronger than a single by-election showed, while
+Conservative-to-Labour switching is considerably weaker. The `rationale` field is where
+that judgement is recorded, and it is required for exactly this reason.
 
 ### 3. Schema and loader
 
