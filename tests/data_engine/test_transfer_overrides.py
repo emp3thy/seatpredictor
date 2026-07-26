@@ -98,3 +98,19 @@ overrides:
 """
     with pytest.raises(ValidationError):
         load_transfer_overrides(_write(tmp_path, text))
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_real_override_file_is_valid_and_complete():
+    """The shipped file parses and covers exactly the england/lab block."""
+    df = load_transfer_overrides(
+        _REPO_ROOT / "data" / "hand_curated" / "transfer_overrides.yaml"
+    )
+    assert len(df) == 4
+    assert set(df["nation"]) == {"england"}
+    assert set(df["consolidator"]) == {"lab"}
+    weights = dict(zip(df["source"], df["weight"]))
+    assert weights == pytest.approx({"con": 0.2, "green": 0.7, "ld": 0.65, "other": 0.2})
+    assert all(len(r) > 40 for r in df["rationale"])
