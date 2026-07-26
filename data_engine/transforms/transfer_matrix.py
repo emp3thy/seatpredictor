@@ -66,7 +66,9 @@ def derive_transfer_matrix(
         provenance = pd.DataFrame(prov_records)
         logger.info("Derived %d matrix cells from %d eligible events", len(cells), n_events)
     else:
-        cells = pd.DataFrame(columns=["nation", "consolidator", "source", "weight", "n"])
+        cells = pd.DataFrame(
+            columns=["nation", "consolidator", "source", "weight", "n"]
+        ).astype({"weight": "float64", "n": "int64"})
         provenance = pd.DataFrame(columns=["nation", "consolidator", "event_id"])
 
     cells, provenance = _apply_overrides(cells, provenance, overrides)
@@ -99,13 +101,18 @@ def _apply_overrides(
             cells.loc[key, "weight"] = float(o["weight"])
             cells.loc[key, "n"] = 0
         else:
-            cells = pd.concat([cells, pd.DataFrame([{
+            new_row = pd.DataFrame([{
                 "nation": o["nation"],
                 "consolidator": o["consolidator"],
                 "source": o["source"],
                 "weight": float(o["weight"]),
                 "n": 0,
-            }])], ignore_index=True)
+            }])
+            # Concatenating onto a genuinely empty (0-row) frame triggers pandas'
+            # "empty or all-NA entries" FutureWarning and can lose the explicit
+            # weight/n dtypes, so replace outright instead of concatenating when
+            # there is nothing to preserve.
+            cells = new_row if cells.empty else pd.concat([cells, new_row], ignore_index=True)
 
     prov_rows = [
         {"nation": nation, "consolidator": consolidator, "event_id": "hand_curated"}
@@ -117,6 +124,7 @@ def _apply_overrides(
         [provenance, pd.DataFrame(prov_rows)], ignore_index=True
     )
 
+    cells["weight"] = cells["weight"].astype(float)
     cells["n"] = cells["n"].astype(int)
     logger.info("Applied %d hand-curated overrides", len(overrides))
     return cells, provenance

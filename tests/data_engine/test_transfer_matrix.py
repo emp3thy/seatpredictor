@@ -273,3 +273,7 @@ def test_overrides_apply_even_when_no_events_are_eligible():
     assert cells.iloc[0]["n"] == 0
     assert len(prov) == 1
     assert prov.iloc[0]["event_id"] == "hand_curated"
+    # An override standing up a cell on the empty-derivation path must still
+    # produce numeric dtypes, not object dtype from the empty starting frame.
+    assert pd.api.types.is_float_dtype(cells["weight"])
+    assert pd.api.types.is_integer_dtype(cells["n"])
