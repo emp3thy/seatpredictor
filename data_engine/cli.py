@@ -94,6 +94,7 @@ def snapshot(as_of):
         raw_cache=_raw_cache(),
         out_dir=_project_root() / "data" / "snapshots",
         byelections_yaml=_project_root() / "data" / "hand_curated" / "by_elections.yaml",
+        transfer_overrides_yaml=_project_root() / "data" / "hand_curated" / "transfer_overrides.yaml",
     )
     path = build_snapshot(cfg)
     click.echo(f"Snapshot at {path}")
@@ -110,12 +111,14 @@ def backfill(since, every_days: int):
     cache = _raw_cache()
     out_dir = _project_root() / "data" / "snapshots"
     yaml_path = _project_root() / "data" / "hand_curated" / "by_elections.yaml"
+    overrides_path = _project_root() / "data" / "hand_curated" / "transfer_overrides.yaml"
     while cur <= today:
         cfg = BuildSnapshotConfig(
             as_of_date=cur,
             raw_cache=cache,
             out_dir=out_dir,
             byelections_yaml=yaml_path,
+            transfer_overrides_yaml=overrides_path,
         )
         try:
             path = build_snapshot(cfg)

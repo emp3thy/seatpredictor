@@ -179,8 +179,47 @@ def test_manifest_round_trip_matches_filename_hash(tmp_path: Path, primed_cache:
     assert manifest.content_hash == filename_hash
     assert isinstance(manifest.source_versions, dict)
     assert set(manifest.source_versions.keys()) == {
-        "wikipedia_polls", "hoc_results", "byelections_yaml", "polls_geographies"
+        "wikipedia_polls", "hoc_results", "byelections_yaml",
+        "polls_geographies", "transfer_overrides_yaml",
     }
     for k, v in manifest.source_versions.items():
         assert isinstance(k, str)
         assert isinstance(v, str)
+
+
+def test_overrides_absent_hashes_to_none(tmp_path: Path, primed_cache: RawCache):
+    from data_engine.snapshot import _source_versions
+    cfg = BuildSnapshotConfig(
+        as_of_date=date(2026, 4, 25),
+        raw_cache=primed_cache,
+        out_dir=tmp_path,
+        byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
+        transfer_overrides_yaml=None,
+    )
+    assert _source_versions(cfg)["transfer_overrides_yaml"] == "none"
+
+
+def test_editing_overrides_changes_the_input_hash(tmp_path: Path, primed_cache: RawCache):
+    """A curated weight change must invalidate the cached snapshot."""
+    from data_engine.snapshot import _source_versions
+    ovr = tmp_path / "transfer_overrides.yaml"
+
+    def versions(weight: float) -> dict:
+        ovr.write_text(
+            "overrides:\n"
+            "  - nation: england\n"
+            "    consolidator: lab\n"
+            "    source: con\n"
+            f"    weight: {weight}\n"
+            "    rationale: test\n",
+            encoding="utf-8",
+        )
+        return _source_versions(BuildSnapshotConfig(
+            as_of_date=date(2026, 4, 25),
+            raw_cache=primed_cache,
+            out_dir=tmp_path,
+            byelections_yaml=_REPO_ROOT / "data" / "hand_curated" / "by_elections.yaml",
+            transfer_overrides_yaml=ovr,
+        ))
+
+    assert versions(0.2)["transfer_overrides_yaml"] != versions(0.3)["transfer_overrides_yaml"]
