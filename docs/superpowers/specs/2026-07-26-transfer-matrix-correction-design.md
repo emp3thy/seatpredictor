@@ -156,6 +156,40 @@ hand-curated overrides for those cells (no evidential basis, unlike the England 
 cells which correct a known derivation error); `exclude_from_matrix: true` on the two
 events (discards real data and forces `matrix_unavailable`).
 
+#### Known limitation, not addressed here: noise-level consolidators
+
+While reviewing the source data it became clear that those two blocks are near-zero for a
+deeper reason than `scale`. `_identify_consolidator` picks the left-bloc party with the
+largest gain and applies only a `gain > 0` test — there is no magnitude threshold. In both
+events the true left-bloc movement was downward, so a trivially positive party wins the
+role:
+
+| event | consolidator picked | its gain | largest left-bloc move |
+|---|---|---:|---|
+| runcorn_helsby_2025 | ld | +0.44 | lab −14.20 |
+| hamilton_larkhall_stonehouse_2025 | green | +0.80 | snp −16.60 |
+
+A +0.44pp move is inside rounding noise. Every `england / ld` cell descends from the first
+row, and every `scotland / green` cell from the second. These are not weak evidence of
+consolidation; they are evidence of *no* consolidation, misread as a consolidator.
+
+A minimum-gain threshold on `_identify_consolidator` — 2.0pp, matching the existing
+`PRIOR_SHARE_THRESHOLD` convention — would drop both blocks entirely and let
+`matrix_unavailable` fire honestly.
+
+**This is deliberately out of scope.** It is a defect in consolidator identification, not
+in flow computation, and it warrants its own spec. It is recorded here so the next person
+to touch this code does not have to rediscover it. In the meantime the `scale` correction
+suppresses the practical impact: both blocks land below 0.02, so the affected seats barely
+move regardless.
+
+#### Scope of hand-curation
+
+Only the `england / lab` block is hand-curated. `england / green`, `wales / plaid`,
+`england / ld` and `scotland / green` remain governed by the corrected derivation. The
+curated block is the one that decides 141 of the 153 Reform-led seats; the rest ride on
+the data.
+
 ### 2. Override file
 
 New file `data/hand_curated/transfer_overrides.yaml`, following the conventions of the
