@@ -204,10 +204,13 @@ def test_build_snapshot_applies_transfer_overrides(tmp_path: Path, primed_cache:
     transfer_weights / transfer_weights_provenance tables, not just _source_versions.
 
     Chosen cell: (scotland, snp, ld). The real by_elections.yaml's only Scotland
-    event eligible for the matrix (hamilton_larkhall_stonehouse_2025) has no
-    left-bloc party gaining share, so derive_transfer_matrix produces zero cells
-    for Scotland — this override creates a cell rather than replacing a derived
-    one, deliberately avoiding any ambiguity about which value "wins".
+    event eligible for the matrix (hamilton_larkhall_stonehouse_2025) does derive
+    cells, but its consolidator is Green (prior 1.5 -> actual 2.3, the only
+    left-bloc gain; SNP and Lab both lose share to Reform's surge), which yields
+    (scotland, green, {con, lab, ld, snp}) — not snp. So (scotland, snp, ld) does
+    not collide with any derived cell, and this override creates a cell rather
+    than replacing a derived one, deliberately avoiding any ambiguity about
+    which value "wins".
     """
     ovr_yaml = tmp_path / "transfer_overrides.yaml"
     ovr_yaml.write_text(
