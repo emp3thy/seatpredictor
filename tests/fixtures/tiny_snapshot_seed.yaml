@@ -93,12 +93,15 @@ byelections_events:
       narrative_url: https://example.test/wal-2025 }
 
 byelections_results:
-  # tst_eng_2025: Lab consolidates from LD/Green/Con. Per Plan A's derive_transfer_matrix:
-  #   LD: prior 10 → actual 4 → flow = (10-4)/10 = 0.6
-  #   Green: prior 10 → actual 5 → flow = 0.5
-  #   Con: prior 5 → actual 3 → flow = 0.4
+  # tst_eng_2025: Lab consolidates from LD/Green/Con. Per derive_transfer_matrix's
+  # two-step calc (raw shrinkage, then scaled by consolidator_gain/total_loss):
+  #   LD: prior 10 → actual 4 → raw flow = (10-4)/10 = 0.6
+  #   Green: prior 10 → actual 5 → raw flow = 0.5
+  #   Con: prior 5 → actual 3 → raw flow = 0.4
   #   Other: prior 2 NOT > 2 (PRIOR_SHARE_THRESHOLD is exclusive at 2.0) → skipped
   #   Reform: skipped (it's the threat).  Lab: skipped (it's the consolidator).
+  #   Lab gains 20.0; total_loss = 6.0(ld) + 5.0(green) + 2.0(con) + 8.0(reform) = 21.0,
+  #   so scale = 20/21 and final weight = raw flow * 20/21 (e.g. LD: 0.6 * 20/21 ≈ 0.5714).
   - { event_id: tst_eng_2025, party: lab,    votes: 6000, actual_share: 60.0, prior_share: 40.0 }
   - { event_id: tst_eng_2025, party: ld,     votes:  400, actual_share:  4.0, prior_share: 10.0 }
   - { event_id: tst_eng_2025, party: green,  votes:  500, actual_share:  5.0, prior_share: 10.0 }
@@ -107,8 +110,10 @@ byelections_results:
   - { event_id: tst_eng_2025, party: snp,    votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: plaid,  votes:    0, actual_share:  0.0, prior_share:  0.0 }
   - { event_id: tst_eng_2025, party: other,  votes:  300, actual_share:  3.0, prior_share:  2.0 }
-  # tst_wal_2025: Plaid consolidates. Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 2/3 (~0.6667).
+  # tst_wal_2025: Plaid consolidates. Raw flows: Lab prior 50 actual 20 → 0.6. LD prior 3 actual 1 → 2/3 (~0.6667).
   # Green prior 10 actual 5 → 0.5. Con prior 5 actual 2 → 0.6. Other prior 2 → skipped. Reform/Plaid skipped.
+  # Plaid gains 25.0; total_loss = 30.0(lab) + 2.0(ld) + 5.0(green) + 3.0(con) = 40.0,
+  # so scale = 25/40 = 0.625 and final weight = raw flow * 0.625 (e.g. LD: 2/3 * 0.625 ≈ 0.4167).
   - { event_id: tst_wal_2025, party: plaid,  votes: 5000, actual_share: 50.0, prior_share: 25.0 }
   - { event_id: tst_wal_2025, party: lab,    votes: 2000, actual_share: 20.0, prior_share: 50.0 }
   - { event_id: tst_wal_2025, party: ld,     votes:  100, actual_share:  1.0, prior_share:  3.0 }

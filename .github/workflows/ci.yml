@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A new push cancels the in-flight run for the same ref,
+  # except on main where every commit's result is worth keeping.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: pytest (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Create venv and install
+        # editable_mode=compat matches the documented local setup — a plain
+        # editable install has been observed to break imports in this project.
+        run: |
+          uv venv --python 3.11
+          uv pip install --config-settings editable_mode=compat -e ".[dev]"
+
+      - name: Run tests
+        # Call the venv binaries directly, never `uv run` — this project
+        # documents that `uv run` reverts the editable install.
+        # -W error::FutureWarning keeps the suite warning-clean. A pandas
+        # FutureWarning on concat-with-empty-frame was a real forward-compat
+        # bug here once; this stops the next one landing silently.
+        run: .venv/bin/python -m pytest -q -W error::FutureWarning
+
+      - name: Verify the CLIs are wired up
+        # Catches packaging regressions the test suite cannot see: the console
+        # scripts resolve, import their modules, and respond.
+        run: |
+          .venv/bin/seatpredict-data --help
+          .venv/bin/seatpredict-predict --help
+          .venv/bin/seatpredict-analyze --help

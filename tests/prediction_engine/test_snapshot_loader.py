@@ -40,8 +40,9 @@ def test_snapshot_transfer_weights_long_format(tiny_snapshot_path):
 
 def test_snapshot_lookup_weight(tiny_snapshot_path):
     snap = Snapshot(tiny_snapshot_path)
-    # england/lab/ld is in the seed at 0.6
-    assert snap.lookup_weight("england", "lab", "ld") == pytest.approx(0.6)
+    # england/lab/ld is in the seed at raw shrinkage 0.6, scaled by lab's
+    # consolidator_gain / total_loss = 20/21 (see test_fixture_sanity.py).
+    assert snap.lookup_weight("england", "lab", "ld") == pytest.approx(0.6 * 20.0 / 21.0)
     # england/lab/snp not seeded → None
     assert snap.lookup_weight("england", "lab", "snp") is None
     # scotland has no consolidator entries → None

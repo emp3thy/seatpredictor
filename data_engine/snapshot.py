@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 from data_engine.raw_cache import RawCache
 from data_engine.sources.byelections import load_byelections
 from data_engine.sources.hoc_results import parse_hoc_results
+from data_engine.sources.transfer_overrides import load_transfer_overrides
 from data_engine.sources.wikipedia_polls import parse_polls_html
 from data_engine.sqlite_io import (
     compute_input_hash,
@@ -22,7 +23,7 @@ from data_engine.transforms.transfer_matrix import derive_transfer_matrix
 from schema.snapshot import SnapshotManifest
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @dataclass
@@ -39,6 +40,7 @@ class BuildSnapshotConfig:
     raw_cache: RawCache
     out_dir: Path
     byelections_yaml: Path
+    transfer_overrides_yaml: Path | None = None
     polls_geographies: tuple[str, ...] = ("GB",)
 
 
@@ -72,7 +74,14 @@ def build_snapshot(cfg: BuildSnapshotConfig) -> Path:
     polls_df = _build_polls_df(cfg)
     results_df = _build_results_df(cfg)
     events_df, ev_results_df = load_byelections(cfg.byelections_yaml, as_of=cfg.as_of_date)
-    cells_df, provenance_df = derive_transfer_matrix(events_df, ev_results_df)
+    overrides_df = (
+        load_transfer_overrides(cfg.transfer_overrides_yaml)
+        if cfg.transfer_overrides_yaml is not None
+        else None
+    )
+    cells_df, provenance_df = derive_transfer_matrix(
+        events_df, ev_results_df, overrides=overrides_df
+    )
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -148,9 +157,17 @@ def _source_versions(cfg: BuildSnapshotConfig) -> dict[str, str]:
     # all old snapshot caches.
     yaml_bytes = cfg.byelections_yaml.read_bytes()
     yaml_hash = hashlib.sha256(yaml_bytes).hexdigest()[:12]
+    # The override file is an input like any other: editing a curated weight has
+    # to change the hash, or build_snapshot hands back the stale cached snapshot.
+    if cfg.transfer_overrides_yaml is not None and cfg.transfer_overrides_yaml.exists():
+        ovr_bytes = cfg.transfer_overrides_yaml.read_bytes()
+        ovr_hash = hashlib.sha256(ovr_bytes).hexdigest()[:12]
+    else:
+        ovr_hash = "none"
     return {
         "wikipedia_polls": cfg.as_of_date.isoformat(),
         "hoc_results": "ge_2024",
         "byelections_yaml": yaml_hash,
+        "transfer_overrides_yaml": ovr_hash,
         "polls_geographies": ",".join(cfg.polls_geographies),
     }

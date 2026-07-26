@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from schema.transfer_weights import TransferWeightCell, TransferWeightProvenance
+from schema.transfer_weights import TransferWeightCell, TransferWeightProvenance, TransferWeightOverride
 from schema.common import PartyCode, Nation
 
 
@@ -34,14 +34,72 @@ def test_cell_weight_in_unit_interval():
         )
 
 
-def test_cell_n_must_be_positive():
+def test_cell_n_may_be_zero_for_hand_curated():
+    """n == 0 marks a hand-curated cell with no supporting by-election events."""
+    cell = TransferWeightCell(
+        nation=Nation.ENGLAND,
+        consolidator=PartyCode.LAB,
+        source=PartyCode.CON,
+        weight=0.2,
+        n=0,
+    )
+    assert cell.n == 0
+
+
+def test_cell_n_must_not_be_negative():
     with pytest.raises(ValidationError):
         TransferWeightCell(
             nation=Nation.WALES,
             consolidator=PartyCode.PLAID,
             source=PartyCode.LAB,
             weight=0.5,
-            n=0,
+            n=-1,
+        )
+
+
+def test_override_valid():
+    o = TransferWeightOverride(
+        nation=Nation.ENGLAND,
+        consolidator=PartyCode.LAB,
+        source=PartyCode.CON,
+        weight=0.2,
+        rationale="Most of the collapsing Conservative vote goes to Reform.",
+    )
+    assert o.weight == 0.2
+    assert o.source is PartyCode.CON
+
+
+def test_override_weight_in_unit_interval():
+    for bad in (1.2, -0.1):
+        with pytest.raises(ValidationError):
+            TransferWeightOverride(
+                nation=Nation.ENGLAND,
+                consolidator=PartyCode.LAB,
+                source=PartyCode.CON,
+                weight=bad,
+                rationale="x",
+            )
+
+
+def test_override_requires_rationale():
+    with pytest.raises(ValidationError):
+        TransferWeightOverride(
+            nation=Nation.ENGLAND,
+            consolidator=PartyCode.LAB,
+            source=PartyCode.CON,
+            weight=0.2,
+            rationale="",
+        )
+
+
+def test_override_rejects_unknown_party():
+    with pytest.raises(ValidationError):
+        TransferWeightOverride(
+            nation=Nation.ENGLAND,
+            consolidator=PartyCode.LAB,
+            source="monster_raving_loony",
+            weight=0.2,
+            rationale="x",
         )
 
 

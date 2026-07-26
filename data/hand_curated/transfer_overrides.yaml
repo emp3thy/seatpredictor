@@ -1,0 +1,49 @@
+# Hand-curated transfer-matrix cells. Each entry replaces the weight derived from
+# by-election data for that (nation, consolidator, source), or creates the cell if
+# no by-election produced one. Overridden cells carry n = 0 in the snapshot and add
+# a "hand_curated" row to transfer_weights_provenance.
+#
+# These are judgement calls, not measurements. The project has no voter-movement
+# data of any kind -- every derived weight is inferred from aggregate share deltas
+# across 5 by-elections and cannot separate switching from differential turnout.
+# The rationale field is mandatory so the reasoning travels with the number.
+#
+# Scope: england/lab only. That block decides 141 of the 153 Reform-led seats and
+# previously rested on a single event (makerfield_2026, n=1). Every other
+# consolidator block stays derived.
+
+overrides:
+  - nation: england
+    consolidator: lab
+    source: con
+    weight: 0.2
+    rationale: >
+      The derived weight conflated total Conservative vote loss with transfer to
+      Labour; most of that vote goes to Reform. Conservative-to-Labour tactical
+      switching to stop Reform is real but small.
+
+  - nation: england
+    consolidator: lab
+    source: green
+    weight: 0.7
+    rationale: >
+      Green voters facing a Reform-leading seat consolidate behind Labour readily,
+      but less than universally.
+
+  - nation: england
+    consolidator: lab
+    source: ld
+    weight: 0.65
+    rationale: >
+      Liberal Democrat tactical switching to Labour is well attested, but the
+      derived 0.94 implied near-total collapse of the LD vote into Labour.
+
+  - nation: england
+    consolidator: lab
+    source: other
+    weight: 0.2
+    rationale: >
+      "Other" is dominated by fringe parties and independents whose votes are
+      belief-driven or personal-relationship-driven, and therefore move less
+      readily than mainstream tactical votes. No derived cell exists for this
+      pair, so this override creates it.
